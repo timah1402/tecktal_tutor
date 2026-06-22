@@ -50,6 +50,7 @@ import type { ReactNode } from "react";
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
+import { dispatchCapabilitySelect } from "@/context/app-shell-storage";
 import { getAccentForIndex } from "@/lib/quick-action-colors";
 import type { Capability } from "@/lib/capability-routes";
 import type { SessionSummary } from "@/lib/session-api";
@@ -63,6 +64,12 @@ interface QuickActionEntry {
   icon: LucideIcon;
   tooltipKey?: string;
   requires?: Capability;
+  /**
+   * Chat capability value ("" for plain Chat) for tiles that should switch
+   * the composer in place when already on /home (Step 5), instead of
+   * navigating. Undefined for plain nav tiles.
+   */
+  capabilityValue?: string;
 }
 
 // Primary + secondary destinations, copied verbatim from SidebarShell's
@@ -81,16 +88,16 @@ const NAV_TILES: QuickActionEntry[] = [
 ];
 
 // Chat capabilities — mirrors the CAPABILITIES array in the /home composer
-// (value, label, icon). Linking to ?capability=X reuses the page's existing
-// mount-time query-param handling; Step 5 makes this also work in-place
-// while already on /home.
+// (value, label, icon). Linking to ?capability=X covers navigating in from
+// another page; capabilityValue lets the click handler switch the composer
+// in place instead when already on /home (Step 5).
 const CAPABILITY_TILES: QuickActionEntry[] = [
-  { href: "/home", label: "Chat", icon: MessageSquare },
-  { href: "/home?capability=deep_question", label: "Quiz", icon: PenLine },
-  { href: "/home?capability=deep_research", label: "Research", icon: Microscope },
-  { href: "/home?capability=deep_solve", label: "Solve", icon: BrainCircuit },
-  { href: "/home?capability=visualize", label: "Visualize", icon: BarChart3 },
-  { href: "/home?capability=mastery_path", label: "Mastery Path", icon: GraduationCap },
+  { href: "/home", label: "Chat", icon: MessageSquare, capabilityValue: "" },
+  { href: "/home?capability=deep_question", label: "Quiz", icon: PenLine, capabilityValue: "deep_question" },
+  { href: "/home?capability=deep_research", label: "Research", icon: Microscope, capabilityValue: "deep_research" },
+  { href: "/home?capability=deep_solve", label: "Solve", icon: BrainCircuit, capabilityValue: "deep_solve" },
+  { href: "/home?capability=visualize", label: "Visualize", icon: BarChart3, capabilityValue: "visualize" },
+  { href: "/home?capability=mastery_path", label: "Mastery Path", icon: GraduationCap, capabilityValue: "mastery_path" },
 ];
 
 interface QuickActionsPanelProps {
@@ -238,6 +245,26 @@ export function QuickActionsPanel({
     onNewChat?.();
     router.push("/home");
   };
+
+  // Capability tiles (Chat/Quiz/Research/Solve/Visualize/Mastery Path):
+  // already on /home → dispatch the in-place switch event (Step 5) instead
+  // of navigating, since a query-only Link navigation wouldn't remount the
+  // page. From anywhere else, let the Link's ?capability= href navigate
+  // normally — the page's existing mount effect picks it up.
+  const handleCapabilityClick =
+    (capabilityValue: string) => (event: React.MouseEvent) => {
+      if (
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.button === 1
+      )
+        return;
+      if (pathname.startsWith("/home")) {
+        event.preventDefault();
+        dispatchCapabilitySelect(capabilityValue);
+      }
+    };
   const lockedTooltip = t("Locked — contact your administrator to get access.");
 
   const navLocked = (item: QuickActionEntry) =>
@@ -311,7 +338,13 @@ export function QuickActionsPanel({
               active={pathname.startsWith(entry.href.split("?")[0])}
               locked={navLocked(entry)}
               lockedTooltip={lockedTooltip}
-              onClick={entry === NAV_TILES[0] ? handleHomeClick : undefined}
+              onClick={
+                entry === NAV_TILES[0]
+                  ? handleHomeClick
+                  : entry.capabilityValue !== undefined
+                    ? handleCapabilityClick(entry.capabilityValue)
+                    : undefined
+              }
             />
           ))}
           <StaticTile index={tiles.length} icon={HistoryIcon} label="History" />

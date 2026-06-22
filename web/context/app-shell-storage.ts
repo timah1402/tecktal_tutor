@@ -52,6 +52,18 @@ export function writeStoredChatResponseTimeout(seconds: number): void {
 export const ACTIVE_SESSION_EVENT = "deeptutor:active-session";
 export const LANGUAGE_EVENT = "deeptutor:language";
 export const SIDEBAR_COLLAPSED_EVENT = "deeptutor:sidebar-collapsed";
+// Fired by QuickActionsPanel when a capability tile is clicked while already
+// on /home, so the composer can switch modes in place instead of relying on
+// the page's mount-only ?capability= query-param effect (which won't
+// re-fire on a query-only navigation). Transient signal, not persisted.
+export const CAPABILITY_SELECT_EVENT = "deeptutor:capability-select";
+
+export function dispatchCapabilitySelect(capability: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(CAPABILITY_SELECT_EVENT, { detail: { capability } }),
+  );
+}
 
 export function normalizeLanguage(
   value: string | null | undefined,

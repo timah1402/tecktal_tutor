@@ -59,6 +59,7 @@ import {
   type MessageRequestSnapshot,
 } from "@/context/UnifiedChatContext";
 import { useAppShell } from "@/context/AppShellContext";
+import { CAPABILITY_SELECT_EVENT } from "@/context/app-shell-storage";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
 import {
@@ -1058,6 +1059,20 @@ export default function ChatPage() {
     },
     [capabilityConfigs, setCapability, setKBs, setTools, userEnabledTools],
   );
+
+  // QuickActionsPanel dispatches this when a capability tile is clicked
+  // while already on /home — a query-only navigation wouldn't re-trigger
+  // the mount-only ?capability= effect above, so this additive listener
+  // covers the in-page case without touching that effect's behavior.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ capability: string }>).detail;
+      if (detail) handleSelectCapability(detail.capability || "");
+    };
+    window.addEventListener(CAPABILITY_SELECT_EVENT, handler);
+    return () => window.removeEventListener(CAPABILITY_SELECT_EVENT, handler);
+  }, [handleSelectCapability]);
 
   const fileToAttachment = useCallback(
     (f: File): Promise<PendingAttachment> =>
