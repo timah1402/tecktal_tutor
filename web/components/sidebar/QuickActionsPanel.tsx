@@ -1,0 +1,382 @@
+"use client";
+
+/**
+ * QuickActionsPanel — Step 3/4 of the navigation redesign.
+ *
+ * Same prop contract as SidebarShell (a drop-in replacement, not a rewrite
+ * of the data plumbing WorkspaceSidebar / UtilitySidebar already own), but a
+ * completely different interaction model: a colorful icon-tile grid instead
+ * of a vertical nav-link list, plus a voice-orb header and a RAG Provider
+ * section — modeled on the user-provided "Tecktal Tutor" reference.
+ *
+ * The voice orb and RAG Provider section are static placeholders here;
+ * History is a static placeholder too (its real flyout lands in Step 6)
+ * while Notebooks already links out since that route exists today.
+ * Capability tiles link to ``/home?capability=X`` as a plain Link for now —
+ * making that switch the composer in place even while already on /home is
+ * Step 5's job. There is no collapsed-rail mode (dropped per the approved
+ * plan); footerSlot is always rendered in its expanded form.
+ */
+
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  BarChart3,
+  BookOpen,
+  BookText,
+  Bot,
+  Brain,
+  BrainCircuit,
+  Github,
+  GraduationCap,
+  HeartHandshake,
+  History as HistoryIcon,
+  House,
+  LayoutGrid,
+  Library,
+  Lock,
+  Mic,
+  Microscope,
+  MessageSquare,
+  NotebookText,
+  PenLine,
+  Settings,
+  type LucideIcon,
+} from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
+
+import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { VersionBadge } from "@/components/sidebar/VersionBadge";
+import { getAccentForIndex } from "@/lib/quick-action-colors";
+import type { Capability } from "@/lib/capability-routes";
+import type { SessionSummary } from "@/lib/session-api";
+
+const GITHUB_REPO_URL = "https://github.com/HKUDS/DeepTutor";
+const DOCS_URL = "https://deeptutor.info/";
+
+interface QuickActionEntry {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  tooltipKey?: string;
+  requires?: Capability;
+}
+
+// Primary + secondary destinations, copied verbatim from SidebarShell's
+// PRIMARY_NAV / SECONDARY_NAV (same hrefs, gating, tooltip keys) so the two
+// nav surfaces can't silently drift apart.
+const NAV_TILES: QuickActionEntry[] = [
+  { href: "/home", label: "Home", icon: House, tooltipKey: "Home tooltip", requires: "llm" },
+  { href: "/partners", label: "Partners", icon: HeartHandshake, tooltipKey: "Partners tooltip", requires: "llm" },
+  { href: "/agents", label: "My Agents", icon: Bot, tooltipKey: "Agents tooltip" },
+  { href: "/co-writer", label: "Co-Writer", icon: PenLine, tooltipKey: "Co-Writer tooltip", requires: "llm" },
+  { href: "/book", label: "Book", icon: Library, tooltipKey: "Book tooltip", requires: "llm" },
+  { href: "/space", label: "Learning Space", icon: LayoutGrid, tooltipKey: "Space tooltip" },
+  { href: "/memory", label: "Memory", icon: Brain, tooltipKey: "Memory tooltip" },
+  { href: "/knowledge", label: "Knowledge Center", icon: BookOpen, tooltipKey: "Knowledge tooltip" },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+
+// Chat capabilities — mirrors the CAPABILITIES array in the /home composer
+// (value, label, icon). Linking to ?capability=X reuses the page's existing
+// mount-time query-param handling; Step 5 makes this also work in-place
+// while already on /home.
+const CAPABILITY_TILES: QuickActionEntry[] = [
+  { href: "/home", label: "Chat", icon: MessageSquare },
+  { href: "/home?capability=deep_question", label: "Quiz", icon: PenLine },
+  { href: "/home?capability=deep_research", label: "Research", icon: Microscope },
+  { href: "/home?capability=deep_solve", label: "Solve", icon: BrainCircuit },
+  { href: "/home?capability=visualize", label: "Visualize", icon: BarChart3 },
+  { href: "/home?capability=mastery_path", label: "Mastery Path", icon: GraduationCap },
+];
+
+interface QuickActionsPanelProps {
+  sessions?: SessionSummary[];
+  activeSessionId?: string | null;
+  loadingSessions?: boolean;
+  showSessions?: boolean;
+  onNewChat?: () => void;
+  onSelectSession?: (sessionId: string) => void | Promise<void>;
+  onRenameSession?: (sessionId: string, title: string) => void | Promise<void>;
+  onDeleteSession?: (sessionId: string) => void | Promise<void>;
+  footerSlot?: ReactNode | ((collapsed: boolean) => ReactNode);
+}
+
+function QuickActionTile({
+  entry,
+  index,
+  active,
+  locked,
+  lockedTooltip,
+  onClick,
+}: {
+  entry: QuickActionEntry;
+  index: number;
+  active: boolean;
+  locked: boolean;
+  lockedTooltip: string;
+  onClick?: (event: React.MouseEvent) => void;
+}) {
+  const { t } = useTranslation();
+  const accent = getAccentForIndex(index);
+  const description = entry.tooltipKey ? t(entry.tooltipKey) : undefined;
+
+  const card = (
+    <div
+      className={`flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 text-center transition-all duration-150 ${
+        locked
+          ? "cursor-not-allowed border-[var(--border)]/50 bg-[var(--card)]/60"
+          : active
+            ? "border-[var(--primary)]/40 bg-[var(--card)] shadow-sm"
+            : "border-[var(--border)]/55 bg-[var(--card)] hover:border-[var(--primary)]/30 hover:shadow-sm"
+      }`}
+    >
+      <div
+        className="relative flex h-9 w-9 items-center justify-center rounded-full"
+        style={{ background: locked ? "var(--muted)" : accent.tint }}
+      >
+        <entry.icon
+          size={17}
+          strokeWidth={1.8}
+          style={{ color: locked ? "var(--muted-foreground)" : accent.icon }}
+        />
+        {locked && (
+          <Lock
+            size={10}
+            strokeWidth={2.2}
+            className="absolute bottom-0 right-0 text-[var(--muted-foreground)]"
+          />
+        )}
+      </div>
+      <span
+        className={`text-[11px] leading-tight ${
+          locked ? "text-[var(--muted-foreground)]/60" : "text-[var(--foreground)]/85"
+        }`}
+      >
+        {t(entry.label)}
+      </span>
+    </div>
+  );
+
+  if (locked) {
+    return (
+      <Tooltip label={t(entry.label)} description={lockedTooltip}>
+        <div aria-disabled aria-label={`${t(entry.label)} — ${lockedTooltip}`}>
+          {card}
+        </div>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip label={t(entry.label)} description={description}>
+      <Link
+        href={entry.href}
+        onClick={onClick}
+        aria-label={t(entry.label)}
+        className="block"
+      >
+        {card}
+      </Link>
+    </Tooltip>
+  );
+}
+
+/** Static placeholder tile — not yet wired to a real action (History: Step 6). */
+function StaticTile({
+  index,
+  icon: Icon,
+  label,
+}: {
+  index: number;
+  icon: LucideIcon;
+  label: string;
+}) {
+  const { t } = useTranslation();
+  const accent = getAccentForIndex(index);
+  return (
+    <button
+      type="button"
+      disabled
+      title={t("Coming soon")}
+      className="flex flex-col items-center gap-1.5 rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-2 py-3 text-center opacity-70"
+    >
+      <div
+        className="flex h-9 w-9 items-center justify-center rounded-full"
+        style={{ background: accent.tint }}
+      >
+        <Icon size={17} strokeWidth={1.8} style={{ color: accent.icon }} />
+      </div>
+      <span className="text-[11px] leading-tight text-[var(--foreground)]/85">
+        {t(label)}
+      </span>
+    </button>
+  );
+}
+
+export function QuickActionsPanel({
+  sessions = [],
+  onNewChat,
+  footerSlot,
+}: QuickActionsPanelProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { t } = useTranslation();
+  const { has } = useCapabilityAccess();
+  const renderedFooter =
+    typeof footerSlot === "function" ? footerSlot(false) : footerSlot;
+
+  const handleHomeClick = (event: React.MouseEvent) => {
+    // Mirrors SidebarShell's Home behavior: always reset to a fresh session,
+    // but let modifier-clicks fall through so middle-click/new-tab still works.
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1)
+      return;
+    event.preventDefault();
+    onNewChat?.();
+    router.push("/home");
+  };
+  const lockedTooltip = t("Locked — contact your administrator to get access.");
+
+  const navLocked = (item: QuickActionEntry) =>
+    item.requires ? !has(item.requires) : false;
+
+  // Grid order: chat entry points first, then the 5 other capabilities,
+  // then the remaining nav destinations, Notebooks, then admin/secondary.
+  const tiles: QuickActionEntry[] = [
+    NAV_TILES[0], // Home
+    ...CAPABILITY_TILES, // Chat, Quiz, Research, Solve, Visualize, Mastery Path
+    NAV_TILES[3], // Co-Writer
+    NAV_TILES[1], // Partners
+    NAV_TILES[2], // My Agents
+    NAV_TILES[4], // Book
+    NAV_TILES[5], // Learning Space
+    NAV_TILES[6], // Memory
+    NAV_TILES[7], // Knowledge Center
+    NAV_TILES[8], // Settings
+  ];
+
+  return (
+    <aside className="flex h-screen w-[240px] shrink-0 flex-col gap-3 overflow-y-auto bg-[var(--background)] px-3 py-3">
+      {/* Header */}
+      <Link href="/" className="group flex items-center gap-2 px-1">
+        <Image
+          src="/logo.png"
+          alt="DeepTutor"
+          width={26}
+          height={26}
+          className="h-[26px] w-[26px] rounded-full transition-transform duration-200 group-hover:scale-105"
+        />
+        <Image
+          src="/banner.png"
+          alt="DeepTutor"
+          width={897}
+          height={236}
+          priority
+          className="h-[20px] w-auto"
+        />
+      </Link>
+
+      {/* Voice orb — static this step; wired up in Step 7 */}
+      <div className="flex flex-col items-center gap-2 rounded-2xl border border-[var(--border)]/55 bg-[var(--card)] py-5">
+        <div
+          className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-[var(--accent)]"
+          style={{ background: "var(--accent)" }}
+        >
+          <Mic size={28} strokeWidth={1.6} className="text-[var(--primary)]" />
+        </div>
+        <div className="text-center">
+          <div className="text-[11.5px] font-semibold uppercase tracking-[0.04em] text-[var(--muted-foreground)]">
+            {t("Tap to start")}
+          </div>
+          <div className="text-[10.5px] text-[var(--muted-foreground)]/70">
+            {t("Always listening — just speak")}
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Actions grid */}
+      <div>
+        <div className="mb-1.5 px-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)]/70">
+          {t("Quick Actions")}
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {tiles.map((entry, index) => (
+            <QuickActionTile
+              key={entry.label}
+              entry={entry}
+              index={index}
+              active={pathname.startsWith(entry.href.split("?")[0])}
+              locked={navLocked(entry)}
+              lockedTooltip={lockedTooltip}
+              onClick={entry === NAV_TILES[0] ? handleHomeClick : undefined}
+            />
+          ))}
+          <StaticTile index={tiles.length} icon={HistoryIcon} label="History" />
+          <Link href="/space/questions" className="block">
+            <div className="flex flex-col items-center gap-1.5 rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-2 py-3 text-center transition-all duration-150 hover:border-[var(--primary)]/30 hover:shadow-sm">
+              <div
+                className="flex h-9 w-9 items-center justify-center rounded-full"
+                style={{ background: getAccentForIndex(tiles.length + 1).tint }}
+              >
+                <NotebookText
+                  size={17}
+                  strokeWidth={1.8}
+                  style={{ color: getAccentForIndex(tiles.length + 1).icon }}
+                />
+              </div>
+              <span className="text-[11px] leading-tight text-[var(--foreground)]/85">
+                {t("Notebooks")}
+              </span>
+            </div>
+          </Link>
+        </div>
+        {sessions.length > 0 && (
+          <p className="mt-1.5 px-1 text-[10px] text-[var(--muted-foreground)]/60">
+            {t("History")}: {sessions.length} {t("Recents")}
+          </p>
+        )}
+      </div>
+
+      {/* RAG Provider — static this step; wired up in Step 8 */}
+      <div className="mt-auto">
+        <div className="mb-1.5 px-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)]/70">
+          {t("RAG Provider")}
+        </div>
+        <div className="rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-3 py-2 text-[12px] text-[var(--muted-foreground)]/70">
+          {t("All Knowledge Bases")}
+        </div>
+      </div>
+
+      {/* Footer — Profile / Admin / Logout (carried over from SidebarShell) */}
+      <div className="border-t border-[var(--border)]/40 pt-2">
+        {renderedFooter}
+        <div className="mt-0.5 flex items-center gap-0.5">
+          <VersionBadge />
+          <a
+            href={DOCS_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            title={t("Docs") as string}
+            aria-label={t("Docs") as string}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
+          >
+            <BookText size={13} strokeWidth={1.7} />
+          </a>
+          <a
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            title="GitHub"
+            aria-label="GitHub"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
+          >
+            <Github size={13} strokeWidth={1.7} />
+          </a>
+        </div>
+      </div>
+    </aside>
+  );
+}

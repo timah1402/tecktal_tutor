@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { SidebarShell } from "@/components/sidebar/SidebarShell";
+import { QuickActionsPanel } from "@/components/sidebar/QuickActionsPanel";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
 import { ProfileLink } from "@/components/auth/ProfileLink";
@@ -124,7 +124,7 @@ export default function WorkspaceSidebar() {
   );
 
   return (
-    <SidebarShell
+    <QuickActionsPanel
       showSessions
       sessions={orderedSessions}
       activeSessionId={selectedSessionId}
