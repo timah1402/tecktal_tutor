@@ -60,6 +60,16 @@ const PALETTES: Record<Theme, Palette> = {
     border: "rgba(255,255,255,0.12)",
     glass: true,
   },
+  // theme id "brand" applies the .theme-brand class → light canvas with the
+  // product logo's forest-green primary.
+  brand: {
+    bg: "#f5f6f4",
+    fg: "#182019",
+    card: "#ffffff",
+    primary: "#1b8a3d",
+    muted: "#eff1ee",
+    border: "#e2e6e1",
+  },
 };
 
 // Renders a miniature DeepTutor UI mockup in the given theme's palette —

@@ -4,10 +4,11 @@
 
 @layer base {
   /* ────────────────────────────────────────────────────────────────────────
-     Theme palettes — four families:
+     Theme palettes — five families:
        • Default (.theme-snow) → pure-white neutral greys, blue accent
        • Cream (:root) and Dark (.dark) → warm family, terracotta accent
        • Glass (.theme-glass) → translucent purple on near-black
+       • Brand (.theme-brand) → light canvas, logo-derived green accent
      Tokens that every theme must publish:
        --background, --foreground, --card / --popover (+ their -foreground),
        --primary (+ -foreground), --secondary, --muted (+ -foreground),
@@ -151,6 +152,45 @@
   .theme-glass .btn-primary:hover {
     box-shadow: 0 0 25px rgba(157, 80, 187, 0.6);
     transform: translateY(-1px);
+  }
+
+  /* Brand — light, friendly canvas built from the product's own logo:
+     a forest-green wordmark with amber / orange-red / navy accent shapes.
+     Green carries every --primary surface; the other three logo colors
+     are exposed as a separate rotating accent set (--accent-amber/
+     -orange/-navy + pastel "-tint" pairs) for things like quick-action
+     tile icons — additive only, the standard --accent/-foreground pair
+     above stays a neutral tint so existing components are unaffected. */
+  .theme-brand {
+    color-scheme: light;
+    --background: #f5f6f4;
+    --foreground: #182019;
+    --card: #ffffff;
+    --card-foreground: #182019;
+    --popover: #ffffff;
+    --popover-foreground: #182019;
+    --primary: #1b8a3d;
+    --primary-foreground: #ffffff;
+    --secondary: #eef2ee;
+    --secondary-foreground: #182019;
+    --muted: #eff1ee;
+    --muted-foreground: #5c6660;
+    --accent: #e3efe6;
+    --accent-foreground: #182019;
+    --destructive: #dc3d2e;
+    --destructive-foreground: #ffffff;
+    --border: #e2e6e1;
+    --input: #e2e6e1;
+    --ring: #1b8a3d;
+    --overlay: rgba(20, 30, 24, 0.4);
+
+    /* Rotating accent set for quick-action tiles, sampled from the logo. */
+    --accent-amber: #e8a317;
+    --accent-amber-tint: #fbf0da;
+    --accent-orange: #e8490a;
+    --accent-orange-tint: #fce3d8;
+    --accent-navy: #15497d;
+    --accent-navy-tint: #dee9f3;
   }
 
   * {

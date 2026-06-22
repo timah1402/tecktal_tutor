@@ -98,7 +98,7 @@ export type Catalog = {
 };
 
 export type UiSettings = {
-  theme: "light" | "dark" | "glass" | "snow";
+  theme: "light" | "dark" | "glass" | "snow" | "brand";
   language: "en" | "zh";
 };
 
