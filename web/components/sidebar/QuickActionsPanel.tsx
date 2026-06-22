@@ -45,11 +45,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
+import HistoryFlyout from "@/components/sidebar/HistoryFlyout";
 import { dispatchCapabilitySelect } from "@/context/app-shell-storage";
 import { getAccentForIndex } from "@/lib/quick-action-colors";
 import type { Capability } from "@/lib/capability-routes";
@@ -192,24 +193,26 @@ function QuickActionTile({
   );
 }
 
-/** Static placeholder tile — not yet wired to a real action (History: Step 6). */
-function StaticTile({
+/** Clickable tile that triggers an action (e.g. opening a flyout) instead of navigating. */
+function ButtonTile({
   index,
   icon: Icon,
   label,
+  onClick,
 }: {
   index: number;
   icon: LucideIcon;
   label: string;
+  onClick: () => void;
 }) {
   const { t } = useTranslation();
   const accent = getAccentForIndex(index);
   return (
     <button
       type="button"
-      disabled
-      title={t("Coming soon")}
-      className="flex flex-col items-center gap-1.5 rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-2 py-3 text-center opacity-70"
+      onClick={onClick}
+      aria-label={t(label)}
+      className="flex flex-col items-center gap-1.5 rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-2 py-3 text-center transition-all duration-150 hover:border-[var(--primary)]/30 hover:shadow-sm"
     >
       <div
         className="flex h-9 w-9 items-center justify-center rounded-full"
@@ -226,13 +229,19 @@ function StaticTile({
 
 export function QuickActionsPanel({
   sessions = [],
+  activeSessionId = null,
+  loadingSessions = false,
   onNewChat,
+  onSelectSession,
+  onRenameSession,
+  onDeleteSession,
   footerSlot,
 }: QuickActionsPanelProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useTranslation();
   const { has } = useCapabilityAccess();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const renderedFooter =
     typeof footerSlot === "function" ? footerSlot(false) : footerSlot;
 
@@ -347,7 +356,12 @@ export function QuickActionsPanel({
               }
             />
           ))}
-          <StaticTile index={tiles.length} icon={HistoryIcon} label="History" />
+          <ButtonTile
+            index={tiles.length}
+            icon={HistoryIcon}
+            label="History"
+            onClick={() => setHistoryOpen(true)}
+          />
           <Link href="/space/questions" className="block">
             <div className="flex flex-col items-center gap-1.5 rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-2 py-3 text-center transition-all duration-150 hover:border-[var(--primary)]/30 hover:shadow-sm">
               <div
@@ -366,11 +380,6 @@ export function QuickActionsPanel({
             </div>
           </Link>
         </div>
-        {sessions.length > 0 && (
-          <p className="mt-1.5 px-1 text-[10px] text-[var(--muted-foreground)]/60">
-            {t("History")}: {sessions.length} {t("Recents")}
-          </p>
-        )}
       </div>
 
       {/* RAG Provider — static this step; wired up in Step 8 */}
@@ -410,6 +419,17 @@ export function QuickActionsPanel({
           </a>
         </div>
       </div>
+
+      <HistoryFlyout
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        loadingSessions={loadingSessions}
+        onSelectSession={onSelectSession ?? (() => {})}
+        onRenameSession={onRenameSession ?? (() => {})}
+        onDeleteSession={onDeleteSession ?? (() => {})}
+      />
     </aside>
   );
 }
