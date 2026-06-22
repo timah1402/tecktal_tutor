@@ -323,9 +323,22 @@ class ResearchPipeline:
             if isinstance(planning.get("rephrase"), dict)
             else True
         )
+        decompose_cfg = (
+            planning.get("decompose")
+            if isinstance(planning.get("decompose"), dict)
+            else {}
+        )
+        # "auto" decompose mode (report / learning_path) leaves
+        # "initial_subtopics" unset and caps via "auto_max_subtopics"
+        # instead — read whichever key the mode actually populates so the
+        # outline step can't out-produce the depth tier's queue_max_length.
         self.initial_subtopics = _read_int(
-            planning.get("decompose"),
-            key="initial_subtopics",
+            decompose_cfg,
+            key=(
+                "auto_max_subtopics"
+                if decompose_cfg.get("mode") == "auto"
+                else "initial_subtopics"
+            ),
             default=DEFAULT_INITIAL_SUBTOPICS,
         )
 
