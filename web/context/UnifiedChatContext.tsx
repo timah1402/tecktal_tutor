@@ -717,7 +717,7 @@ const initialState: ProviderState = {
 // pushes like the LLM-generated ``session_meta`` title update to land.
 const POST_DONE_DISCONNECT_DELAY_MS = 15_000;
 
-interface ChatContextValue {
+export interface ChatContextValue {
   state: ChatState;
   setTools: (tools: string[]) => void;
   setCapability: (cap: string | null) => void;
@@ -1882,4 +1882,16 @@ export function useUnifiedChat() {
   if (!ctx)
     throw new Error("useUnifiedChat must be inside UnifiedChatProvider");
   return ctx;
+}
+
+/**
+ * Same context, but returns ``null`` instead of throwing when called
+ * outside a UnifiedChatProvider. For components shared across route groups
+ * that only have the provider in some of them — e.g. QuickActionsPanel is
+ * rendered both inside (workspace) (has the provider) and (utility)
+ * (doesn't) — where the existing throwing useUnifiedChat() would crash the
+ * (utility) tree outright.
+ */
+export function useUnifiedChatSafe(): ChatContextValue | null {
+  return useContext(ChatCtx);
 }

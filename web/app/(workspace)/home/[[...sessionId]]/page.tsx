@@ -59,7 +59,10 @@ import {
   type MessageRequestSnapshot,
 } from "@/context/UnifiedChatContext";
 import { useAppShell } from "@/context/AppShellContext";
-import { CAPABILITY_SELECT_EVENT } from "@/context/app-shell-storage";
+import {
+  CAPABILITY_SELECT_EVENT,
+  VOICE_TRANSCRIPT_EVENT,
+} from "@/context/app-shell-storage";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
 import {
@@ -541,6 +544,20 @@ export default function ChatPage() {
     };
     window.addEventListener("dt:visualize-prompt", onVizPrompt);
     return () => window.removeEventListener("dt:visualize-prompt", onVizPrompt);
+  }, [handlePrefillComposer]);
+
+  // QuickActionsPanel's voice orb runs its own independent useVoiceRecorder
+  // instance (separate from the composer's own mic button) and dispatches
+  // this event with the transcript; mirror it into the composer the same
+  // way the viz-prompt bridge above does.
+  useEffect(() => {
+    const onVoiceTranscript = (e: Event) => {
+      const text = (e as CustomEvent<{ text: string }>).detail?.text;
+      if (typeof text === "string" && text) handlePrefillComposer(text);
+    };
+    window.addEventListener(VOICE_TRANSCRIPT_EVENT, onVoiceTranscript);
+    return () =>
+      window.removeEventListener(VOICE_TRANSCRIPT_EVENT, onVoiceTranscript);
   }, [handlePrefillComposer]);
 
   const activeCap = useMemo(

@@ -36,7 +36,6 @@ import {
   LayoutGrid,
   Library,
   Lock,
-  Mic,
   Microscope,
   MessageSquare,
   NotebookText,
@@ -45,14 +44,18 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
 import HistoryFlyout from "@/components/sidebar/HistoryFlyout";
+import { VoiceOrb } from "@/components/sidebar/VoiceOrb";
+import KnowledgeSelector from "@/components/chat/home/KnowledgeSelector";
 import { dispatchCapabilitySelect } from "@/context/app-shell-storage";
+import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
 import { getAccentForIndex } from "@/lib/quick-action-colors";
+import { listKnowledgeBases } from "@/lib/knowledge-api";
 import type { Capability } from "@/lib/capability-routes";
 import type { SessionSummary } from "@/lib/session-api";
 
@@ -227,6 +230,78 @@ function ButtonTile({
   );
 }
 
+/**
+ * Live KB selector, but only on /home: that's the only place the selected
+ * scope (state.knowledgeBases / setKBs, owned by UnifiedChatContext) is
+ * meaningful, and it's the single source of truth the composer's own KB
+ * chip already reads/writes — duplicating it elsewhere would risk drift.
+ * The KB *catalog* (what's available, not what's selected) isn't in that
+ * context though, so this fetches it independently via the same shared
+ * listKnowledgeBases() client-cache helper page.tsx uses — same precedent
+ * as WorkspaceSidebar/UtilitySidebar each independently calling
+ * listSessions(). Elsewhere (any (utility) route, or UnifiedChatContext
+ * simply not being mounted there) this renders a static fallback instead.
+ */
+function RagProviderSection() {
+  const pathname = usePathname();
+  const { t } = useTranslation();
+  const onHome = pathname.startsWith("/home");
+  const chat = useUnifiedChatSafe();
+  const [catalog, setCatalog] = useState<{ name: string }[]>([]);
+
+  useEffect(() => {
+    if (!onHome) return;
+    let cancelled = false;
+    listKnowledgeBases()
+      .then((list) => {
+        if (cancelled) return;
+        setCatalog(
+          list
+            .filter((kb) => kb.metadata?.type !== "subagent")
+            .map((kb) => ({ name: kb.name })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setCatalog([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onHome]);
+
+  return (
+    <>
+      <div className="mb-1.5 px-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)]/70">
+        {t("RAG Provider")}
+      </div>
+      {onHome && chat ? (
+        <div className="rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-2 py-1.5">
+          <KnowledgeSelector
+            knowledgeBases={catalog}
+            selected={chat.state.knowledgeBases}
+            onToggle={(name) => {
+              const current = chat.state.knowledgeBases;
+              chat.setKBs(
+                current.includes(name)
+                  ? current.filter((kb) => kb !== name)
+                  : [...current, name],
+              );
+            }}
+            placement="bottom"
+          />
+        </div>
+      ) : (
+        <Link
+          href="/home"
+          className="block rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-3 py-2 text-[12px] text-[var(--muted-foreground)]/70 transition-colors hover:border-[var(--primary)]/30 hover:text-[var(--foreground)]"
+        >
+          {t("Open a chat to set a Knowledge Base")}
+        </Link>
+      )}
+    </>
+  );
+}
+
 export function QuickActionsPanel({
   sessions = [],
   activeSessionId = null,
@@ -315,23 +390,8 @@ export function QuickActionsPanel({
         />
       </Link>
 
-      {/* Voice orb — static this step; wired up in Step 7 */}
-      <div className="flex flex-col items-center gap-2 rounded-2xl border border-[var(--border)]/55 bg-[var(--card)] py-5">
-        <div
-          className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-[var(--accent)]"
-          style={{ background: "var(--accent)" }}
-        >
-          <Mic size={28} strokeWidth={1.6} className="text-[var(--primary)]" />
-        </div>
-        <div className="text-center">
-          <div className="text-[11.5px] font-semibold uppercase tracking-[0.04em] text-[var(--muted-foreground)]">
-            {t("Tap to start")}
-          </div>
-          <div className="text-[10.5px] text-[var(--muted-foreground)]/70">
-            {t("Always listening — just speak")}
-          </div>
-        </div>
-      </div>
+      {/* Voice orb */}
+      <VoiceOrb />
 
       {/* Quick Actions grid */}
       <div>
@@ -382,14 +442,9 @@ export function QuickActionsPanel({
         </div>
       </div>
 
-      {/* RAG Provider — static this step; wired up in Step 8 */}
+      {/* RAG Provider */}
       <div className="mt-auto">
-        <div className="mb-1.5 px-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)]/70">
-          {t("RAG Provider")}
-        </div>
-        <div className="rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-3 py-2 text-[12px] text-[var(--muted-foreground)]/70">
-          {t("All Knowledge Bases")}
-        </div>
+        <RagProviderSection />
       </div>
 
       {/* Footer — Profile / Admin / Logout (carried over from SidebarShell) */}

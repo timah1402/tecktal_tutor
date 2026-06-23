@@ -65,6 +65,20 @@ export function dispatchCapabilitySelect(capability: string): void {
   );
 }
 
+// Fired by QuickActionsPanel's voice orb (its own independent
+// useVoiceRecorder instance — separate from the composer's mic button) once
+// a transcript comes back, so /home can drop it into the composer the same
+// way other "inject text" features already do. Transient signal, not
+// persisted.
+export const VOICE_TRANSCRIPT_EVENT = "deeptutor:voice-transcript";
+
+export function dispatchVoiceTranscript(text: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(VOICE_TRANSCRIPT_EVENT, { detail: { text } }),
+  );
+}
+
 export function normalizeLanguage(
   value: string | null | undefined,
 ): AppLanguage {
