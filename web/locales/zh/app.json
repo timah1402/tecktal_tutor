@@ -558,6 +558,8 @@
   "Configure voice in Settings": "在设置中配置语音",
   "Stop recording": "停止录音",
   "Record voice": "录音",
+  "Open menu": "打开菜单",
+  "Close menu": "关闭菜单",
   "RAG Provider (Optional)": "RAG 提供方（可选）",
   "Leave as-is to use the KB's existing provider": "保持不变以使用该知识库已有的提供方",
   "Keep unchanged to use this KB's existing provider": "保持不变以使用该知识库已有的提供方",

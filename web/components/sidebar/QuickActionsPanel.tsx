@@ -36,11 +36,13 @@ import {
   LayoutGrid,
   Library,
   Lock,
+  Menu,
   Microscope,
   MessageSquare,
   NotebookText,
   PenLine,
   Settings,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -317,8 +319,18 @@ export function QuickActionsPanel({
   const { t } = useTranslation();
   const { has } = useCapabilityAccess();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const renderedFooter =
     typeof footerSlot === "function" ? footerSlot(false) : footerSlot;
+
+  // Close the mobile drawer on every route change — adjusted during render
+  // (React's recommended "reset state on prop change" pattern) rather than
+  // in an effect, to avoid the extra cascading render an effect would cause.
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
+    setMobileDrawerOpen(false);
+  }
 
   const handleHomeClick = (event: React.MouseEvent) => {
     // Mirrors SidebarShell's Home behavior: always reset to a fresh session,
@@ -370,8 +382,44 @@ export function QuickActionsPanel({
   ];
 
   return (
-    <aside className="flex h-screen w-[240px] shrink-0 flex-col gap-3 overflow-y-auto bg-[var(--background)] px-3 py-3">
-      {/* Header */}
+    <>
+      {/* Mobile-only trigger — floating so it never overlaps a page's own
+          header content. Hidden at md and up, where the panel is always
+          visible inline. */}
+      <button
+        type="button"
+        onClick={() => setMobileDrawerOpen(true)}
+        aria-label={t("Open menu")}
+        className="fixed left-3 top-3 z-40 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border)]/55 bg-[var(--card)] text-[var(--foreground)] shadow-md md:hidden"
+      >
+        <Menu size={18} strokeWidth={1.8} />
+      </button>
+
+      {/* Scrim — mobile only, behind the drawer, closes it on click. */}
+      {mobileDrawerOpen && (
+        <div
+          onClick={() => setMobileDrawerOpen(false)}
+          aria-hidden
+          className="fixed inset-0 z-40 bg-[var(--overlay)] md:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[240px] shrink-0 flex-col gap-3 overflow-y-auto bg-[var(--background)] px-3 py-3 transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${
+          mobileDrawerOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        {/* Mobile-only close button inside the open drawer. */}
+        <button
+          type="button"
+          onClick={() => setMobileDrawerOpen(false)}
+          aria-label={t("Close menu")}
+          className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)] md:hidden"
+        >
+          <X size={16} strokeWidth={1.8} />
+        </button>
+
+        {/* Header */}
       <Link href="/" className="group flex items-center gap-2 px-1">
         <Image
           src="/logo.png"
@@ -475,6 +523,12 @@ export function QuickActionsPanel({
         </div>
       </div>
 
+    </aside>
+
+      {/* Rendered as a sibling of <aside>, not inside it: the aside now has
+          a CSS transform (for the slide-over), which would otherwise turn
+          it into a containing block for HistoryFlyout's fixed-position
+          PickerShell overlay and break its full-viewport centering. */}
       <HistoryFlyout
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
@@ -485,6 +539,6 @@ export function QuickActionsPanel({
         onRenameSession={onRenameSession ?? (() => {})}
         onDeleteSession={onDeleteSession ?? (() => {})}
       />
-    </aside>
+    </>
   );
 }

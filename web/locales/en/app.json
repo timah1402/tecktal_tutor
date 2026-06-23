@@ -558,6 +558,8 @@
   "Configure voice in Settings": "Configure voice in Settings",
   "Stop recording": "Stop recording",
   "Record voice": "Record voice",
+  "Open menu": "Open menu",
+  "Close menu": "Close menu",
   "RAG Provider (Optional)": "RAG Provider (Optional)",
   "Leave as-is to use the KB's existing provider": "Leave as-is to use the KB's existing provider",
   "Keep unchanged to use this KB's existing provider": "Keep unchanged to use this KB's existing provider",
