@@ -1064,7 +1064,7 @@ const UserMessage = memo(function UserMessage({
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
+          <div className="rounded-2xl bg-[var(--primary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--primary-foreground)] shadow-sm">
             <div className="whitespace-pre-wrap">{msg.content}</div>
           </div>
         )}
