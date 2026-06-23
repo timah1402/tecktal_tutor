@@ -13,8 +13,10 @@ from typing import Any
 from deeptutor.services.path_service import get_path_service
 
 DEFAULT_UI_SETTINGS: dict[str, Any] = {
-    # "snow" is the pure-white neutral theme, shown as "Default" in the UI.
-    "theme": "snow",
+    # "brand" is the logo-derived light-green theme, the default for new
+    # users; "snow" (pure-white neutral, shown as "Default" in the UI) is
+    # kept as a selectable option, just no longer the out-of-the-box theme.
+    "theme": "brand",
     "language": "en",
 }
 

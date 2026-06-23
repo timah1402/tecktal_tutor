@@ -68,15 +68,15 @@ export function saveThemeToStorage(theme: Theme): boolean {
 
 /**
  * Get system preference for theme.
- * Light systems get "snow" (the pure-white Default theme); dark systems
+ * Light systems get "brand" (the default light theme); dark systems
  * get "dark". Must stay in sync with the inline ThemeScript fallback.
  */
 export function getSystemTheme(): Theme {
-  if (typeof window === "undefined") return "snow";
+  if (typeof window === "undefined") return "brand";
 
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
-    : "snow";
+    : "brand";
 }
 
 /**
@@ -102,7 +102,7 @@ export function applyThemeToDocument(theme: Theme): void {
 
 /**
  * Initialize theme on app startup
- * Priority: localStorage > system preference (snow on light systems, dark on dark)
+ * Priority: localStorage > system preference (brand on light systems, dark on dark)
  */
 export function initializeTheme(): Theme {
   // Check localStorage first

@@ -26,14 +26,14 @@ export default function ThemeScript() {
         } else if (stored === 'light') {
           // already clean
         } else {
-          // No stored preference: Default (snow) for light systems,
+          // No stored preference: Brand for light systems,
           // Dark for prefers-color-scheme: dark.
           if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
             document.documentElement.classList.add('dark');
             localStorage.setItem('deeptutor-theme', 'dark');
           } else {
-            document.documentElement.classList.add('theme-snow');
-            localStorage.setItem('deeptutor-theme', 'snow');
+            document.documentElement.classList.add('theme-brand');
+            localStorage.setItem('deeptutor-theme', 'brand');
           }
         }
       } catch (e) {

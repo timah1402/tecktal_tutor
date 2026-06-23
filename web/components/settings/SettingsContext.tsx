@@ -468,7 +468,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [theme, setTheme] = useState<UiSettings["theme"]>("snow");
+  const [theme, setTheme] = useState<UiSettings["theme"]>("brand");
   const [language, setLanguage] = useState<UiSettings["language"]>("en");
   const [catalog, setCatalog] = useState<Catalog>(defaultCatalog());
   const [draft, setDraft] = useState<Catalog>(defaultCatalog());

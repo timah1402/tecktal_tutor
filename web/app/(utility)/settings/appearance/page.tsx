@@ -59,10 +59,11 @@ export default function AppearanceSettingsPage() {
         )}
       >
         <div className="py-4">
-          {/* Order is intentional: Default (pure-white neutral, the default
-              selection; theme id "snow" kept for stored preferences) →
-              warm-light Cream → warm-dark Dark → cool-dark Glass → Brand
-              (logo-derived green, opt-in only — not a default for anyone yet). */}
+          {/* Order is intentional: Default (pure-white neutral; theme id
+              "snow" kept for stored preferences) → warm-light Cream →
+              warm-dark Dark → cool-dark Glass → Brand (logo-derived green —
+              now the default for new/no-preference light-mode users; see
+              getSystemTheme()/ThemeScript.tsx). */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {(
               [

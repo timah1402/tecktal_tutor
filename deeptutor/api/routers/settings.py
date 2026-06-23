@@ -55,8 +55,10 @@ DEFAULT_SIDEBAR_NAV_ORDER = {
 }
 
 DEFAULT_UI_SETTINGS = {
-    # "snow" is the pure-white neutral theme, shown as "Default" in the UI.
-    "theme": "snow",
+    # "brand" is the logo-derived light-green theme, the default for new
+    # users; "snow" (pure-white neutral, shown as "Default" in the UI) is
+    # kept as a selectable option, just no longer the out-of-the-box theme.
+    "theme": "brand",
     "language": "en",
     "sidebar_description": "✨ Data Intelligence Lab @ HKU",
     "sidebar_nav_order": DEFAULT_SIDEBAR_NAV_ORDER,
@@ -87,7 +89,7 @@ class SidebarNavOrder(BaseModel):
 
 
 class UISettings(BaseModel):
-    theme: Literal["light", "dark", "glass", "snow", "brand"] = "snow"
+    theme: Literal["light", "dark", "glass", "snow", "brand"] = "brand"
     language: Literal["zh", "en"] = "en"
     sidebar_description: Optional[str] = None
     sidebar_nav_order: Optional[SidebarNavOrder] = None
