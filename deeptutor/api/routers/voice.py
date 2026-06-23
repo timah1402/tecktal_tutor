@@ -1,9 +1,14 @@
-"""Voice endpoints — text-to-speech and speech-to-text.
+"""Voice endpoints — text-to-speech, speech-to-text, and realtime voice.
 
-These are thin HTTP surfaces over :mod:`deeptutor.services.voice`. Config comes
-from the admin-managed model catalog (``services.tts`` / ``services.stt``), so
-voice is shared infrastructure like embedding/search — any authenticated user
-may call it; it is not gated by per-user LLM grants.
+The TTS/STT endpoints are thin HTTP surfaces over :mod:`deeptutor.services.voice`.
+Config comes from the admin-managed model catalog (``services.tts`` /
+``services.stt``), so voice is shared infrastructure like embedding/search —
+any authenticated user may call it; it is not gated by per-user LLM grants.
+
+The realtime-session endpoint is different: it mints a short-lived OpenAI
+Realtime API token derived from the active **LLM** profile's API key (not a
+separate TTS/STT provider), so it *is* gated by the same per-user LLM grant
+check the rest of the app uses (``has_capability_access("llm")``).
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ import io
 import logging
 import wave
 
+import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, Field
 
@@ -30,6 +36,14 @@ _MAX_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB, matching OpenAI's limit.
 _DEFAULT_PCM_SAMPLE_RATE = 24_000
 _DEFAULT_PCM_CHANNELS = 1
 _PCM16_SAMPLE_WIDTH = 2
+
+# OpenAI's realtime model id. Tracks OpenAI's current GA naming; update here
+# if/when it changes rather than threading a setting through the catalog —
+# this is the only place it's referenced.
+_REALTIME_MODEL = "gpt-realtime-2"
+_REALTIME_DEFAULT_VOICE = "marin"
+_REALTIME_TRANSCRIBE_MODEL = "gpt-realtime-whisper"
+_REALTIME_CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets"
 
 
 class TTSRequest(BaseModel):
@@ -128,3 +142,94 @@ async def speech_to_text(
         logger.warning("STT provider error: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return {"text": text}
+
+
+@router.post("/realtime-session")
+async def create_realtime_session() -> dict[str, object]:
+    """Mint a short-lived OpenAI Realtime API token for a direct browser↔OpenAI
+    WebRTC connection. Our long-lived account key never reaches the browser —
+    only this ephemeral ``client_secret`` does.
+
+    Requires the active LLM profile to be a real OpenAI account (``binding ==
+    "openai"``); the Realtime API doesn't work with Azure/other bindings.
+    """
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.multi_user.model_access import has_capability_access
+    from deeptutor.services.llm.config import get_llm_config
+    from deeptutor.services.llm.exceptions import LLMConfigError
+
+    current_user = get_current_user()
+    if not current_user.is_admin and not has_capability_access("llm"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No LLM model is assigned to your account. Please contact an administrator.",
+        )
+
+    try:
+        llm_config = get_llm_config()
+    except LLMConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if llm_config.binding != "openai" or not llm_config.api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Real-time voice requires the active LLM model to use a direct "
+                "OpenAI account (Settings > Catalog). Configure an OpenAI API "
+                "key there to enable it."
+            ),
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                _REALTIME_CLIENT_SECRETS_URL,
+                headers={
+                    "Authorization": f"Bearer {llm_config.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "session": {
+                        "type": "realtime",
+                        "model": _REALTIME_MODEL,
+                        "audio": {
+                            "input": {
+                                # Without this, the API never emits
+                                # conversation.item.input_audio_transcription.*
+                                # events — the model still hears the user fine,
+                                # but we'd have no text to save into chat history.
+                                "transcription": {"model": _REALTIME_TRANSCRIBE_MODEL}
+                            },
+                            "output": {"voice": _REALTIME_DEFAULT_VOICE},
+                        },
+                    }
+                },
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("Realtime client secret mint request error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not reach OpenAI to start the voice call: {exc}",
+        ) from exc
+
+    if resp.status_code >= 400:
+        logger.warning(
+            "Realtime client secret mint failed: HTTP %s %s", resp.status_code, resp.text[:500]
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="OpenAI rejected the request to start the voice call.",
+        )
+
+    data = resp.json()
+    client_secret = data.get("value")
+    if not client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="OpenAI did not return a usable token for the voice call.",
+        )
+    return {
+        "client_secret": client_secret,
+        "expires_at": data.get("expires_at"),
+        "model": _REALTIME_MODEL,
+    }

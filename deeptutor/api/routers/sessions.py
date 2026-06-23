@@ -59,6 +59,25 @@ class QuizResultsRequest(BaseModel):
     turn_id: str = ""
 
 
+class RealtimeExchangeRequest(BaseModel):
+    """One finished user<->assistant exchange from a live realtime voice call.
+
+    Both sides of the exchange are already complete by the time this is
+    called — the Realtime API produced the assistant's reply itself, so this
+    only appends the two messages; it never runs the agent/turn pipeline.
+
+    ``session_id`` is optional: a realtime call can start on a fresh /home
+    tab before any session exists yet, same as a first typed message would.
+    Omitting it (or passing one that's gone) creates a new session, mirroring
+    ``store.ensure_session`` — the response's ``session_id`` is the one to
+    adopt going forward.
+    """
+
+    session_id: str | None = None
+    user_text: str = Field(..., min_length=1)
+    assistant_text: str = Field(..., min_length=1)
+
+
 def _format_quiz_results_message(answers: list[QuizResultItem]) -> str:
     total = len(answers)
     correct = sum(1 for item in answers if item.is_correct)
@@ -227,4 +246,38 @@ async def record_quiz_results(session_id: str, payload: QuizResultsRequest):
         "answer_count": len(payload.answers),
         "notebook_count": notebook_count,
         "content": content,
+    }
+
+
+@router.post("/realtime-exchange")
+async def record_realtime_exchange(payload: RealtimeExchangeRequest):
+    """Append one finished realtime-voice exchange to a session.
+
+    Mirrors ``record_quiz_results`` above: a direct ``store.add_message()``
+    append, no turn/agent execution. ``capability="realtime_voice"`` lets the
+    frontend recognize these messages (e.g. to skip TTS autoplay, since the
+    audio already played live during the call). Creates a new session via
+    ``ensure_session`` when ``session_id`` is missing/stale, same as the
+    normal turn pipeline does for a first message on a fresh tab.
+    """
+    store = get_session_store()
+    session = await store.ensure_session(payload.session_id)
+    session_id = session["id"]
+    user_message_id = await store.add_message(
+        session_id=session_id,
+        role="user",
+        content=payload.user_text,
+        capability="realtime_voice",
+    )
+    assistant_message_id = await store.add_message(
+        session_id=session_id,
+        role="assistant",
+        content=payload.assistant_text,
+        capability="realtime_voice",
+    )
+    return {
+        "recorded": True,
+        "session_id": session_id,
+        "user_message_id": user_message_id,
+        "assistant_message_id": assistant_message_id,
     }

@@ -201,6 +201,24 @@ export async function recordQuizResults(
   await expectJson<{ recorded: boolean }>(response);
 }
 
+export async function recordRealtimeExchange(
+  sessionId: string | null,
+  userText: string,
+  assistantText: string,
+): Promise<{ sessionId: string }> {
+  const response = await apiFetch(apiUrl("/api/v1/sessions/realtime-exchange"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      user_text: userText,
+      assistant_text: assistantText,
+    }),
+  });
+  const data = await expectJson<{ recorded: boolean; session_id: string }>(response);
+  return { sessionId: data.session_id };
+}
+
 export async function deleteMessage(
   sessionId: string,
   messageId: number,

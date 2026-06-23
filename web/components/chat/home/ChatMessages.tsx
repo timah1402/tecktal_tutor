@@ -1448,7 +1448,12 @@ export const ChatMessageList = memo(function ChatMessageList({
                         content={msg.content}
                         conversationKey={sessionId ?? undefined}
                         autoPlayFresh={
-                          isLastAssistant && freshlyCompletedIndex === i
+                          isLastAssistant &&
+                          freshlyCompletedIndex === i &&
+                          // Realtime-voice messages already had their audio
+                          // played live during the call — autoplaying TTS on
+                          // top would double-speak the same reply.
+                          msg.capability !== "realtime_voice"
                         }
                       />
                     )}
