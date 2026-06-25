@@ -226,8 +226,8 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
       <SettingsPageHeader
         title={displayName}
         description={tr({
-          zh: `DeepTutor 通过 consult_subagent 调用本机 ${displayName} 时使用的模型、推理强度与运行参数。设置后即覆盖 CLI 的默认值；留空表示沿用 CLI 默认。`,
-          en: `Model, reasoning effort, and run parameters DeepTutor drives the local ${displayName} with when consulting it. These override the CLI defaults; leave blank to keep the CLI's own default.`,
+          zh: `TECKTAL TUTOR 通过 consult_subagent 调用本机 ${displayName} 时使用的模型、推理强度与运行参数。设置后即覆盖 CLI 的默认值；留空表示沿用 CLI 默认。`,
+          en: `Model, reasoning effort, and run parameters TECKTAL TUTOR drives the local ${displayName} with when consulting it. These override the CLI defaults; leave blank to keep the CLI's own default.`,
         })}
       />
 
@@ -318,15 +318,15 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
           <SettingSection
             title={tr({ zh: "模型", en: "Model" })}
             description={tr({
-              zh: "DeepTutor 调用该智能体时使用的模型与推理强度。",
-              en: "The model and reasoning effort DeepTutor consults this agent with.",
+              zh: "TECKTAL TUTOR 调用该智能体时使用的模型与推理强度。",
+              en: "The model and reasoning effort TECKTAL TUTOR consults this agent with.",
             })}
           >
             <SettingRow
               title={tr({ zh: "启用", en: "Enabled" })}
               description={tr({
-                zh: "关闭后，DeepTutor 不会在对话中调用该智能体。",
-                en: "When off, DeepTutor won't consult this agent in chat.",
+                zh: "关闭后，TECKTAL TUTOR 不会在对话中调用该智能体。",
+                en: "When off, TECKTAL TUTOR won't consult this agent in chat.",
               })}
               control={
                 <Toggle
@@ -406,8 +406,8 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
             <SettingSection
               title={tr({ zh: "系统提示", en: "System prompt" })}
               description={tr({
-                zh: "追加到该智能体的系统提示（--append-system-prompt）。留空则使用 DeepTutor 的默认委派提示。",
-                en: "Appended to the agent's system prompt (--append-system-prompt). Blank uses DeepTutor's default delegate instruction.",
+                zh: "追加到该智能体的系统提示（--append-system-prompt）。留空则使用 TECKTAL TUTOR 的默认委派提示。",
+                en: "Appended to the agent's system prompt (--append-system-prompt). Blank uses TECKTAL TUTOR's default delegate instruction.",
               })}
             >
               <div className="py-4">
@@ -431,8 +431,8 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
           <SettingSection
             title={tr({ zh: "运行参数", en: "Run parameters" })}
             description={tr({
-              zh: "DeepTutor 无人值守地驱动该智能体——默认值确保它不会卡在等待确认上。",
-              en: "DeepTutor drives the agent unattended — the defaults ensure it never stalls waiting for an approval prompt.",
+              zh: "TECKTAL TUTOR 无人值守地驱动该智能体——默认值确保它不会卡在等待确认上。",
+              en: "TECKTAL TUTOR drives the agent unattended — the defaults ensure it never stalls waiting for an approval prompt.",
             })}
           >
             {!isCodex && (
@@ -535,8 +535,8 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
             <SettingRow
               title={tr({ zh: "转发图片", en: "Forward images" })}
               description={tr({
-                zh: "允许 DeepTutor 把本轮对话中的图片附件转发给该智能体。",
-                en: "Let DeepTutor forward image attachments from the chat turn to this agent.",
+                zh: "允许 TECKTAL TUTOR 把本轮对话中的图片附件转发给该智能体。",
+                en: "Let TECKTAL TUTOR forward image attachments from the chat turn to this agent.",
               })}
               control={
                 <Toggle

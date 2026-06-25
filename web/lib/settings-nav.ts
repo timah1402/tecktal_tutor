@@ -194,7 +194,7 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
     href: "/settings/agents/claude-code",
     label: { zh: "Claude Code", en: "Claude Code" },
     blurb: {
-      zh: "DeepTutor 调用本机 Claude Code 时的模型、推理强度与运行参数。",
+      zh: "TECKTAL TUTOR 调用本机 Claude Code 时的模型、推理强度与运行参数。",
       en: "Model, reasoning effort, and run params for the local Claude Code.",
     },
     // Brand glyph shares the lucide call signature (size/className).
@@ -207,7 +207,7 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
     href: "/settings/agents/codex",
     label: { zh: "Codex", en: "Codex" },
     blurb: {
-      zh: "DeepTutor 调用本机 Codex 时的模型、推理强度与运行参数。",
+      zh: "TECKTAL TUTOR 调用本机 Codex 时的模型、推理强度与运行参数。",
       en: "Model, reasoning effort, and run params for the local Codex.",
     },
     icon: CodexGlyph as unknown as LucideIcon,

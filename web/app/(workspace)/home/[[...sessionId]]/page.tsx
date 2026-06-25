@@ -1808,8 +1808,8 @@ export default function ChatPage() {
               <div className="flex flex-1 min-h-0 flex-col items-center justify-end pb-14 animate-fade-in">
                 <div className="flex items-center justify-center gap-4">
                   <img
-                    src="/logo_black.png"
-                    alt="DeepTutor"
+                    src="/logo.png"
+                    alt="TECKTAL TUTOR"
                     width={40}
                     height={40}
                     className="h-10 w-10 select-none"

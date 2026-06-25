@@ -45,6 +45,103 @@ _REALTIME_DEFAULT_VOICE = "marin"
 _REALTIME_TRANSCRIBE_MODEL = "gpt-realtime-whisper"
 _REALTIME_CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets"
 
+# Voice-driven in-app actions: navigating between pages, switching
+# capabilities, starting a new chat, opening/closing history, and changing
+# the theme. The frontend (VoiceOrb.tsx) is what actually performs each
+# action once the model decides to call one of these mid-conversation. The
+# voice call itself now lives in a sidebar mounted once at the app's root
+# layout, so it survives navigation between any of these pages.
+_REALTIME_TOOLS = [
+    {
+        "type": "function",
+        "name": "navigate_to",
+        "description": (
+            "Navigate to a different page/section of the app. Use when the "
+            "user asks to open Settings, go to their agents, open the "
+            "co-writer, the book, the learning space, notebooks, memory, "
+            "the knowledge center, or go back home."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "string",
+                    "enum": [
+                        "home",
+                        "settings",
+                        "partners",
+                        "agents",
+                        "co_writer",
+                        "book",
+                        "learning_space",
+                        "notebooks",
+                        "memory",
+                        "knowledge_center",
+                    ],
+                }
+            },
+            "required": ["page"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "switch_capability",
+        "description": (
+            "Switch the chat composer to a different mode/capability. Use "
+            "when the user asks to do a quiz, research, solve a problem, "
+            "visualize something, work on a mastery path, or go back to "
+            "plain chat."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "capability": {
+                    "type": "string",
+                    "enum": ["chat", "quiz", "research", "solve", "visualize", "mastery_path"],
+                }
+            },
+            "required": ["capability"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "start_new_chat",
+        "description": "Start a brand new chat, clearing the current conversation.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "open_history",
+        "description": "Open the panel listing the user's past conversations.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "close_history",
+        "description": (
+            "Close the history panel and go back to the chat. Use when the "
+            "user is in the history/past-conversations panel and asks to go "
+            "back, close it, or return to the chat."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "set_theme",
+        "description": "Change the app's visual theme.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "theme": {
+                    "type": "string",
+                    "enum": ["light", "dark", "glass", "snow", "brand"],
+                }
+            },
+            "required": ["theme"],
+        },
+    },
+]
+
 
 class TTSRequest(BaseModel):
     """Text-to-speech request body."""
@@ -202,6 +299,7 @@ async def create_realtime_session() -> dict[str, object]:
                             },
                             "output": {"voice": _REALTIME_DEFAULT_VOICE},
                         },
+                        "tools": _REALTIME_TOOLS,
                     }
                 },
             )

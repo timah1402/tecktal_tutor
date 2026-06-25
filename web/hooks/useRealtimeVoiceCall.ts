@@ -11,9 +11,17 @@ export type RealtimeCallState =
   | "speaking"
   | "error";
 
+interface RealtimeResponseOutputItem {
+  type: string;
+  name?: string;
+  call_id?: string;
+  arguments?: string;
+}
+
 interface RealtimeServerEvent {
   type: string;
   transcript?: string;
+  response?: { output?: RealtimeResponseOutputItem[] };
   [key: string]: unknown;
 }
 
@@ -30,6 +38,15 @@ export interface UseRealtimeVoiceCallOptions {
   onUserUtterance?: (text: string) => void;
   /** Fires once per finished assistant utterance, with the spoken text. */
   onAssistantUtterance?: (text: string) => void;
+  /**
+   * Fires when the model calls one of the tools declared server-side (see
+   * voice.py's session config). Return value is sent back to the model as
+   * the function's result, so it can speak an accurate confirmation.
+   */
+  onFunctionCall?: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => unknown | Promise<unknown>;
   /** Override for tests; production callers should leave this at the default. */
   silenceTimeoutMs?: number;
 }
@@ -99,6 +116,60 @@ export function useRealtimeVoiceCall(options: UseRealtimeVoiceCallOptions) {
     }, SILENCE_CHECK_INTERVAL_MS);
   }, [cleanup, stopSilenceWatchdog]);
 
+  const sendClientEvent = useCallback((payload: Record<string, unknown>) => {
+    dcRef.current?.send(JSON.stringify(payload));
+  }, []);
+
+  // The model doesn't auto-continue after a function call — we have to send
+  // its result back, then explicitly ask for a response. But in practice the
+  // model often already speaks a confirmation in the *same* turn it calls
+  // the function (observed live, not just per docs), so we only request a
+  // follow-up response when it didn't already say something out loud —
+  // otherwise the user would hear two confirmations back to back.
+  const handleFunctionCalls = useCallback(
+    async (output: RealtimeResponseOutputItem[]) => {
+      const calls = output.filter((item) => item.type === "function_call");
+      if (calls.length === 0) return;
+      const alreadySpoke = output.some(
+        (item) =>
+          item.type === "message" &&
+          Array.isArray((item as { content?: unknown[] }).content) &&
+          ((item as { content?: unknown[] }).content?.length ?? 0) > 0,
+      );
+      for (const call of calls) {
+        if (!call.name || !call.call_id) continue;
+        let args: Record<string, unknown> = {};
+        try {
+          args = call.arguments ? JSON.parse(call.arguments) : {};
+        } catch {
+          // Malformed arguments — proceed with an empty object; our tools'
+          // arguments are all optional or single-enum, so this is recoverable.
+        }
+        let result: unknown;
+        try {
+          result = await optionsRef.current.onFunctionCall?.(call.name, args);
+        } catch (err) {
+          result = {
+            status: "error",
+            message: err instanceof Error ? err.message : String(err),
+          };
+        }
+        sendClientEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: call.call_id,
+            output: JSON.stringify(result ?? { status: "ok" }),
+          },
+        });
+      }
+      if (!alreadySpoke) {
+        sendClientEvent({ type: "response.create" });
+      }
+    },
+    [sendClientEvent],
+  );
+
   const handleServerEvent = useCallback((event: RealtimeServerEvent) => {
     lastActivityRef.current = Date.now();
     switch (event.type) {
@@ -119,6 +190,11 @@ export function useRealtimeVoiceCall(options: UseRealtimeVoiceCallOptions) {
         break;
       }
       case "response.done":
+        if (event.response?.output?.length) {
+          void handleFunctionCalls(event.response.output);
+        }
+        setState("listening");
+        break;
       case "response.cancelled":
         setState("listening");
         break;
@@ -132,7 +208,7 @@ export function useRealtimeVoiceCall(options: UseRealtimeVoiceCallOptions) {
       default:
         break;
     }
-  }, []);
+  }, [handleFunctionCalls]);
 
   const connect = useCallback(async () => {
     if (state !== "idle" && state !== "error") return;

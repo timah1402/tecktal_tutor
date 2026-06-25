@@ -15,7 +15,7 @@ import {
   type SessionSummary,
 } from "@/lib/session-api";
 
-export default function WorkspaceSidebar() {
+export default function AppSidebar() {
   const { t } = useTranslation();
   const router = useRouter();
   const {

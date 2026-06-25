@@ -5,6 +5,10 @@ import ThemeScript from "@/components/ThemeScript";
 import ToastViewport from "@/components/common/ToastViewport";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
+import { CapabilityAccessProvider } from "@/components/access/CapabilityAccessContext";
+import CapabilityGate from "@/components/access/CapabilityGate";
+import { UnifiedChatProvider } from "@/context/UnifiedChatContext";
+import AppSidebar from "@/components/sidebar/AppSidebar";
 
 // Geist matches the public site (deeptutor.info) and stays crisp at the
 // small UI sizes the composer/toolbars use, unlike the rounder Jakarta.
@@ -21,7 +25,7 @@ const fontSerif = Lora({
 });
 
 export const metadata: Metadata = {
-  title: "DeepTutor",
+  title: "TECKTAL TUTOR",
   description: "Agent-native intelligent learning companion",
   icons: {
     icon: [
@@ -52,7 +56,18 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <AppShellProvider>
-          <I18nClientBridge>{children}</I18nClientBridge>
+          <I18nClientBridge>
+            <CapabilityAccessProvider>
+              <UnifiedChatProvider>
+                <div className="flex h-screen overflow-hidden">
+                  <AppSidebar />
+                  <main className="flex-1 overflow-hidden bg-[var(--background)]">
+                    <CapabilityGate>{children}</CapabilityGate>
+                  </main>
+                </div>
+              </UnifiedChatProvider>
+            </CapabilityAccessProvider>
+          </I18nClientBridge>
           <ToastViewport />
         </AppShellProvider>
       </body>

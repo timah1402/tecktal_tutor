@@ -4,7 +4,7 @@
  * QuickActionsPanel — Step 3/4 of the navigation redesign.
  *
  * Same prop contract as SidebarShell (a drop-in replacement, not a rewrite
- * of the data plumbing WorkspaceSidebar / UtilitySidebar already own), but a
+ * of the data plumbing AppSidebar already owns), but a
  * completely different interaction model: a colorful icon-tile grid instead
  * of a vertical nav-link list, plus a voice-orb header and a RAG Provider
  * section — modeled on the user-provided "Tecktal Tutor" reference.
@@ -240,9 +240,8 @@ function ButtonTile({
  * The KB *catalog* (what's available, not what's selected) isn't in that
  * context though, so this fetches it independently via the same shared
  * listKnowledgeBases() client-cache helper page.tsx uses — same precedent
- * as WorkspaceSidebar/UtilitySidebar each independently calling
- * listSessions(). Elsewhere (any (utility) route, or UnifiedChatContext
- * simply not being mounted there) this renders a static fallback instead.
+ * as AppSidebar independently calling listSessions(). Elsewhere (any
+ * non-/home route) this renders a static fallback instead.
  */
 function RagProviderSection() {
   const pathname = usePathname();
@@ -423,23 +422,21 @@ export function QuickActionsPanel({
       <Link href="/" className="group flex items-center gap-2 px-1">
         <Image
           src="/logo.png"
-          alt="DeepTutor"
+          alt="TECKTAL TUTOR"
           width={26}
           height={26}
-          className="h-[26px] w-[26px] rounded-full transition-transform duration-200 group-hover:scale-105"
+          className="h-[26px] w-[26px] transition-transform duration-200 group-hover:scale-105"
         />
-        <Image
-          src="/banner.png"
-          alt="DeepTutor"
-          width={897}
-          height={236}
-          priority
-          className="h-[20px] w-auto"
-        />
+        <span className="font-serif text-base font-semibold tracking-tight text-[var(--foreground)]">
+          TECKTAL TUTOR
+        </span>
       </Link>
 
       {/* Voice orb */}
-      <VoiceOrb />
+      <VoiceOrb
+        onOpenHistory={() => setHistoryOpen(true)}
+        onCloseHistory={() => setHistoryOpen(false)}
+      />
 
       {/* Quick Actions grid */}
       <div>

@@ -193,15 +193,15 @@ export function SidebarShell({
         <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
           <Link
             href="/"
-            aria-label="DeepTutor"
+            aria-label="TECKTAL TUTOR"
             className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
           >
             <Image
               src="/logo.png"
-              alt="DeepTutor"
+              alt="TECKTAL TUTOR"
               width={22}
               height={22}
-              className="h-[22px] w-[22px] rounded-md"
+              className="h-[22px] w-[22px]"
             />
           </Link>
           <button
@@ -327,19 +327,14 @@ export function SidebarShell({
         <Link href="/" className="group flex items-center gap-1.5">
           <Image
             src="/logo.png"
-            alt="DeepTutor"
+            alt="TECKTAL TUTOR"
             width={22}
             height={22}
             className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
           />
-          <Image
-            src="/banner.png"
-            alt="DeepTutor"
-            width={897}
-            height={236}
-            priority
-            className="h-[22px] w-auto transition-transform duration-200 group-hover:scale-105"
-          />
+          <span className="font-serif text-base font-semibold tracking-tight text-[var(--foreground)] transition-transform duration-200 group-hover:scale-105">
+            TECKTAL TUTOR
+          </span>
         </Link>
         <button
           onClick={() => setCollapsed(true)}

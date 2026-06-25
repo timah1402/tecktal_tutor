@@ -205,6 +205,7 @@ export async function recordRealtimeExchange(
   sessionId: string | null,
   userText: string,
   assistantText: string,
+  capability?: string | null,
 ): Promise<{ sessionId: string }> {
   const response = await apiFetch(apiUrl("/api/v1/sessions/realtime-exchange"), {
     method: "POST",
@@ -213,6 +214,7 @@ export async function recordRealtimeExchange(
       session_id: sessionId,
       user_text: userText,
       assistant_text: assistantText,
+      capability: capability ?? null,
     }),
   });
   const data = await expectJson<{ recorded: boolean; session_id: string }>(response);

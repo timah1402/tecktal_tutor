@@ -76,6 +76,7 @@ class RealtimeExchangeRequest(BaseModel):
     session_id: str | None = None
     user_text: str = Field(..., min_length=1)
     assistant_text: str = Field(..., min_length=1)
+    capability: str | None = None
 
 
 def _format_quiz_results_message(answers: list[QuizResultItem]) -> str:
@@ -259,10 +260,23 @@ async def record_realtime_exchange(payload: RealtimeExchangeRequest):
     audio already played live during the call). Creates a new session via
     ``ensure_session`` when ``session_id`` is missing/stale, same as the
     normal turn pipeline does for a first message on a fresh tab.
+
+    ``payload.capability`` (when given) is the app capability active *at the
+    time of this exchange* (e.g. after a voice-triggered ``switch_capability``
+    call) — persisted into the session's preferences the same way
+    ``turn_runtime.start_turn`` does for normal turns. Without this, voice
+    capability switches only ever changed in-memory React state; the next
+    ``loadSession()`` (which runs after every realtime exchange, to reconcile
+    message ids) would reload the session's *stale* persisted capability from
+    the last typed turn and silently revert the switch.
     """
     store = get_session_store()
     session = await store.ensure_session(payload.session_id)
     session_id = session["id"]
+    if payload.capability is not None:
+        await store.update_session_preferences(
+            session_id, {"capability": payload.capability}
+        )
     user_message_id = await store.add_message(
         session_id=session_id,
         role="user",
