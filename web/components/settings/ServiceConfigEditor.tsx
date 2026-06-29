@@ -1096,7 +1096,11 @@ function ProfileFields({
               className={`${inputClass} pr-10 font-mono`}
               value={profile.api_key}
               onChange={(e) =>
-                updateProfileField(service, "api_key", e.target.value)
+                // A pasted key with stray leading/trailing whitespace is
+                // invisible (masked input) but byte-for-byte wrong — the
+                // provider rejects it the same way it rejects a genuinely
+                // incorrect key, with no hint that whitespace was the cause.
+                updateProfileField(service, "api_key", e.target.value.trim())
               }
               placeholder="sk-..."
             />

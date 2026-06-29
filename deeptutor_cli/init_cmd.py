@@ -184,7 +184,7 @@ def _probe_llm_with_retry(console: Console, strings: dict, choice: wiz.LLMChoice
             return
         choice.api_key = typer.prompt(
             strings["init.api_key_prompt"], default="", hide_input=True, show_default=False
-        )
+        ).strip()
 
 
 def _embedding_step(
@@ -240,7 +240,7 @@ def _embedding_step(
     else:
         api_key = typer.prompt(
             strings["init.embedding_api_key"], default="", hide_input=True, show_default=False
-        )
+        ).strip()
 
     # Try live ``/models`` first; fall back to the curated list (spec default
     # first, then EMBEDDING_FALLBACK_MODELS) when the fetch returns nothing.
@@ -332,7 +332,7 @@ def _search_step(
                 default="",
                 hide_input=True,
                 show_default=False,
-            )
+            ).strip()
     else:
         wiz.info(console, strings["init.search_no_key_note"].format(label=spec.label))
 

@@ -537,9 +537,13 @@ def capture_api_key(
             if typer.confirm(offer, default=True):
                 return from_env
 
+    # Stray leading/trailing whitespace from a copy-paste is invisible in a
+    # hidden-input prompt but makes the key byte-for-byte wrong — the
+    # provider then rejects it with the same "incorrect API key" error as a
+    # genuinely wrong key, with no hint that whitespace was the cause.
     return typer.prompt(
         strings["init.api_key_prompt"], default="", hide_input=True, show_default=False
-    )
+    ).strip()
 
 
 # --- Live /models fetch --------------------------------------------------------
