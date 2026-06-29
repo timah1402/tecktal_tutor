@@ -95,7 +95,13 @@ const BRIDGE_SCRIPT =
   "<script data-dt-bridge>" +
   "(function(){" +
   'window.sendPrompt=function(t){try{parent.postMessage({type:"dt:visualize-prompt",text:String(t||"")},"*")}catch(e){}};' +
-  'function rh(){try{var b=document.body,h=Math.max(document.documentElement.scrollHeight,b?b.scrollHeight:0);parent.postMessage({type:"dt:visualize-height",height:h},"*")}catch(e){}}' +
+  // +8px buffer: scrollHeight is a pure layout measurement and never accounts
+  // for CSS `transform` (rotate/translate/scale) — those paint outside the
+  // element's layout box without changing it. An animated element near an
+  // edge (e.g. a rotating icon) can otherwise get clipped by the iframe's
+  // own fixed-size viewport even though nothing is "overflowing" by CSS's
+  // own definition.
+  'function rh(){try{var b=document.body,h=Math.max(document.documentElement.scrollHeight,b?b.scrollHeight:0)+8;parent.postMessage({type:"dt:visualize-height",height:h},"*")}catch(e){}}' +
   'if(typeof ResizeObserver!=="undefined"){var ro=new ResizeObserver(rh);document.addEventListener("DOMContentLoaded",function(){ro.observe(document.documentElement);rh()})}' +
   'document.addEventListener("DOMContentLoaded",rh);window.addEventListener("load",rh);' +
   "})();" +

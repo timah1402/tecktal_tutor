@@ -67,6 +67,14 @@ import ContextReferenceTree, {
 import { ComposerInput, type ComposerInputHandle } from "./ComposerInput";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 
+// Matches HeroQuickActions' SPRING exactly — the capability badge below
+// shares a `layoutId` with that component's dock tiles, so a tool "flies"
+// from the centered home dock into this badge when selected (and back when
+// deselected/switched). Framer Motion's shared layout animation tracks
+// elements by layoutId across the whole tree, no provider needed, as long
+// as the transition values match on both ends.
+const DOCK_SPRING = { type: "spring" as const, stiffness: 420, damping: 34, mass: 0.9 };
+
 interface PendingAttachment {
   type: string;
   filename: string;
@@ -754,8 +762,11 @@ export default memo(function ChatComposer({
           <div className="px-3 pb-2 pt-0.5">
             <div className="flex items-center gap-1">
               <div className="relative">
-                <button
+                <motion.button
                   ref={capBtnRef}
+                  layout
+                  layoutId={`dock-tool-${activeCap.value}`}
+                  transition={DOCK_SPRING}
                   onClick={() => onSetCapMenuOpen((v) => !v)}
                   className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
                     capMenuOpen
@@ -774,7 +785,7 @@ export default memo(function ChatComposer({
                     strokeWidth={2}
                     className={`-mr-0.5 shrink-0 transition-transform duration-200 ${capMenuOpen ? "rotate-180" : ""}`}
                   />
-                </button>
+                </motion.button>
 
                 {capMenuOpen && (
                   <div

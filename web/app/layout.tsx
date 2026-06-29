@@ -8,6 +8,7 @@ import { I18nClientBridge } from "@/i18n/I18nClientBridge";
 import { CapabilityAccessProvider } from "@/components/access/CapabilityAccessContext";
 import CapabilityGate from "@/components/access/CapabilityGate";
 import { UnifiedChatProvider } from "@/context/UnifiedChatContext";
+import { VoiceCallProvider } from "@/context/VoiceCallContext";
 import AppSidebar from "@/components/sidebar/AppSidebar";
 
 // Geist matches the public site (deeptutor.info) and stays crisp at the
@@ -59,12 +60,14 @@ export default function RootLayout({
           <I18nClientBridge>
             <CapabilityAccessProvider>
               <UnifiedChatProvider>
-                <div className="flex h-screen overflow-hidden">
-                  <AppSidebar />
-                  <main className="flex-1 overflow-hidden bg-[var(--background)]">
-                    <CapabilityGate>{children}</CapabilityGate>
-                  </main>
-                </div>
+                <VoiceCallProvider>
+                  <div className="flex h-screen overflow-hidden">
+                    <AppSidebar />
+                    <main className="flex-1 overflow-hidden bg-[var(--background)]">
+                      <CapabilityGate>{children}</CapabilityGate>
+                    </main>
+                  </div>
+                </VoiceCallProvider>
               </UnifiedChatProvider>
             </CapabilityAccessProvider>
           </I18nClientBridge>

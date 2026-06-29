@@ -74,14 +74,6 @@ export default function AppSidebar() {
     })
     .map(({ session }) => session);
 
-  // Cancel any in-flight streaming turn before starting a fresh session, so a
-  // new chat never inherits a still-running turn (mirrors handleDeleteSession).
-  const handleNewChat = useCallback(() => {
-    cancelStreamingTurn();
-    newSession();
-    router.push("/home");
-  }, [cancelStreamingTurn, newSession, router]);
-
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
       router.push(`/home/${sessionId}`);
@@ -129,7 +121,6 @@ export default function AppSidebar() {
       sessions={orderedSessions}
       activeSessionId={selectedSessionId}
       loadingSessions={loadingSessions}
-      onNewChat={handleNewChat}
       onSelectSession={handleSelectSession}
       onRenameSession={handleRenameSession}
       onDeleteSession={handleDeleteSession}

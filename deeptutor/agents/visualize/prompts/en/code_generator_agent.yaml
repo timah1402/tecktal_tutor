@@ -70,6 +70,16 @@ rules_svg: |
   `data-prompt="<a short follow-up question>"` on its `<g>` — clicking sends that
   question to chat. Use it for nodes a learner would naturally want to expand.
 
+  Animation (only if the render type was fixed to svg AND the request asks for
+  motion — otherwise this should have been routed to html instead, which is
+  the better fit for animation): use SMIL tags for simple, self-contained
+  looping motion, e.g. `<animateTransform attributeName="transform"
+  type="rotate" from="0 cx cy" to="360 cx cy" dur="18s"
+  repeatCount="indefinite"/>` for rotation, or `<animate attributeName="opacity"
+  values="1;0.4;1" dur="3s" repeatCount="indefinite"/>` for a pulse. Keep it
+  subtle and continuous (repeatCount="indefinite"), never a single one-shot
+  transition.
+
   Coordinate math — most SVG failures are arithmetic, so compute before drawing:
   - Box width from the longest label: `width = max(title_chars*8, subtitle_chars*7) + 24`.
     A 100px box holds ~10 subtitle chars. Special characters (formulas, ∑, ₆,
@@ -157,6 +167,22 @@ rules_html: |
   - For a cyclic or staged process, build a stepper: one panel per stage, dots or
     pills showing position, a Next button that wraps from the last stage back to
     the first. Each panel owns its own content so nothing collides.
+  - If the brief's `chart_type`/interaction tag is "animation", or the request
+    or description says things like animate / rotate / pulse / flow / orbit /
+    spin / float / twinkle: this page's whole job is to actually move, not to
+    sit still. Make it move on its own, autoplaying immediately on load — do
+    NOT gate it behind a button unless the user also asked for play/pause
+    controls. Use CSS for continuous/looping motion (preferred — smoother,
+    cheaper):
+      <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .orbit { animation: spin 18s linear infinite; transform-origin: center; }
+      </style>
+    Animate `transform` and `opacity` only (rotate/translate/scale/fade) — they
+    don't affect layout, which keeps the page's measured height stable while it
+    moves. Never animate `width`/`height`/`top`/`left`/`margin` directly. For
+    motion driven by data or user input rather than a fixed loop, use a
+    `requestAnimationFrame` loop in `<script>` instead of `setInterval`.
   - Within these constraints, choose layout, color, and interaction freely to
     make the page clear, beautiful, and easy to learn from.
 

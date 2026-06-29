@@ -59,6 +59,14 @@ rules_svg: |
   `data-prompt="<一个简短的追问>"`——点击会把这个问题发送到对话。用于学习者自然
   会想展开的节点。
 
+  动画（仅当 render_type 被固定为 svg 且请求要求运动时使用——否则本该被路由到
+  html，那才是动画更合适的归宿）：用 SMIL 标签实现简单的自包含循环运动，例如
+  旋转用 `<animateTransform attributeName="transform" type="rotate" from="0 cx
+  cy" to="360 cx cy" dur="18s" repeatCount="indefinite"/>`，脈動用
+  `<animate attributeName="opacity" values="1;0.4;1" dur="3s"
+  repeatCount="indefinite"/>`。保持克制、持续循环（repeatCount="indefinite"），
+  绝不做一次性的过渡动画。
+
   坐标计算——SVG 大多数失败源于算术，所以先算后画：
   - 框宽由最长标签决定：`width = max(标题字数*8, 副标题字数*7) + 24`。
     100px 的框约容纳 10 个副标题字符。特殊字符（公式、∑、₆、下标）更宽，加 30-50%。
@@ -132,6 +140,20 @@ rules_html: |
     投到对话输入框。用在学习者自然会想深入的地方。
   - 对循环或分阶段流程，构建 stepper：每个阶段一个面板，用圆点 / 药丸显示位置，
     Next 按钮从最后一个阶段绕回第一个。每个面板自带内容，互不碰撞。
+  - 如果简报里的 `chart_type` / 交互标签是 "animation"，或请求 / 描述里出现
+    "动起来"、"旋转"、"脈動"、"流动"、"公转"、"漂浮"、"闪烁"之类的词：这个页面
+    的全部任务就是真正动起来，不是静止不动。让它一加载就自动播放——除非用户
+    也要求了播放/暂停控件，否则不要把动画锁在按钮后面。优先用 CSS 实现连续 /
+    循环运动（更流畅、更省资源）：
+      <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .orbit { animation: spin 18s linear infinite; transform-origin: center; }
+      </style>
+    只对 `transform` 和 `opacity` 做动画（旋转/平移/缩放/淡入淡出）——它们不影响
+    布局，能让页面测得的高度在运动时保持稳定。绝不要直接对
+    `width`/`height`/`top`/`left`/`margin` 做动画。如果运动由数据或用户输入驱动
+    而非固定循环，在 `<script>` 里用 `requestAnimationFrame` 循环，而不是
+    `setInterval`。
   - 在以上约束内自由决定布局、配色和交互，让页面清晰、美观、易学。
 
 user_template: |

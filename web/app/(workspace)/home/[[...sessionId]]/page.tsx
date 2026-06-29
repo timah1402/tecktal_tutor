@@ -35,6 +35,7 @@ import type { SelectedHistorySession } from "@/components/chat/HistorySessionPic
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
+import { HeroQuickActions } from "@/components/chat/home/HeroQuickActions";
 // Imported eagerly so the drawer shell is always mounted off-screen —
 // clicking a chip becomes a single CSS class flip, no chunk fetch + double
 // render. The heavy renderers inside still load lazily.
@@ -1805,7 +1806,7 @@ export default function ChatPage() {
           </div>
           <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
             {!hasMessages ? (
-              <div className="flex flex-1 min-h-0 flex-col items-center justify-end pb-14 animate-fade-in">
+              <div className="flex flex-1 min-h-0 flex-col items-center justify-start gap-8 overflow-y-auto py-6 animate-fade-in">
                 <div className="flex items-center justify-center gap-4">
                   <img
                     src="/logo.png"
@@ -1819,6 +1820,7 @@ export default function ChatPage() {
                     {t(welcomeGreeting)}
                   </h1>
                 </div>
+                <HeroQuickActions />
               </div>
             ) : (
               <div
@@ -1946,7 +1948,7 @@ export default function ChatPage() {
               aria-hidden="true"
               className="shrink-0"
               style={{
-                flexGrow: hasMessages ? 0 : 1.4,
+                flexGrow: hasMessages ? 0 : 0.2,
                 transition: "flex-grow 650ms cubic-bezier(0.16, 1, 0.3, 1)",
               }}
             />
