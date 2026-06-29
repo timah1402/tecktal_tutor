@@ -85,7 +85,11 @@ export async function apiFetch(
     res.status === 401 &&
     runtimeAuthEnabled &&
     !skipAuthRedirect &&
-    typeof window !== "undefined"
+    typeof window !== "undefined" &&
+    // Already on an auth page — redirecting here would just bounce /register
+    // back to /login (and /login back to itself), since the root layout's
+    // sidebar/providers fire authenticated background fetches on every route.
+    !/^\/(login|register)(\/|$)/.test(window.location.pathname)
   ) {
     const next = encodeURIComponent(window.location.pathname);
     window.location.href = `/login?next=${next}`;

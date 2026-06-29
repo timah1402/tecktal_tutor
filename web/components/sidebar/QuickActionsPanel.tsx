@@ -34,11 +34,9 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
-  BookText,
   Bot,
   Brain,
   BrainCircuit,
-  Github,
   GraduationCap,
   HeartHandshake,
   History as HistoryIcon,
@@ -63,7 +61,6 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { VersionBadge } from "@/components/sidebar/VersionBadge";
 import HistoryFlyout from "@/components/sidebar/HistoryFlyout";
 import KnowledgeSelector from "@/components/chat/home/KnowledgeSelector";
 import { dispatchCapabilitySelect } from "@/context/app-shell-storage";
@@ -79,9 +76,6 @@ import type { SessionSummary } from "@/lib/session-api";
 // tile's FLIP animation looks identical regardless of which pair of
 // components it's currently flying between.
 const DOCK_SPRING = { type: "spring" as const, stiffness: 420, damping: 34, mass: 0.9 };
-
-const GITHUB_REPO_URL = "https://github.com/HKUDS/DeepTutor";
-const DOCS_URL = "https://deeptutor.info/";
 
 export interface QuickActionEntry {
   href: string;
@@ -628,29 +622,6 @@ export function QuickActionsPanel({
       {/* Footer — Profile / Admin / Logout (carried over from SidebarShell) */}
       <div className="border-t border-[var(--border)]/40 pt-2">
         {renderedFooter}
-        <div className="mt-0.5 flex items-center gap-0.5">
-          <VersionBadge />
-          <a
-            href={DOCS_URL}
-            target="_blank"
-            rel="noreferrer noopener"
-            title={t("Docs") as string}
-            aria-label={t("Docs") as string}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
-          >
-            <BookText size={13} strokeWidth={1.7} />
-          </a>
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer noopener"
-            title="GitHub"
-            aria-label="GitHub"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
-          >
-            <Github size={13} strokeWidth={1.7} />
-          </a>
-        </div>
       </div>
 
     </aside>

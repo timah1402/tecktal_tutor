@@ -6,10 +6,9 @@ import ToastViewport from "@/components/common/ToastViewport";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
 import { CapabilityAccessProvider } from "@/components/access/CapabilityAccessContext";
-import CapabilityGate from "@/components/access/CapabilityGate";
 import { UnifiedChatProvider } from "@/context/UnifiedChatContext";
 import { VoiceCallProvider } from "@/context/VoiceCallContext";
-import AppSidebar from "@/components/sidebar/AppSidebar";
+import AppChrome from "@/components/sidebar/AppChrome";
 
 // Geist matches the public site (deeptutor.info) and stays crisp at the
 // small UI sizes the composer/toolbars use, unlike the rounder Jakarta.
@@ -61,12 +60,7 @@ export default function RootLayout({
             <CapabilityAccessProvider>
               <UnifiedChatProvider>
                 <VoiceCallProvider>
-                  <div className="flex h-screen overflow-hidden">
-                    <AppSidebar />
-                    <main className="flex-1 overflow-hidden bg-[var(--background)]">
-                      <CapabilityGate>{children}</CapabilityGate>
-                    </main>
-                  </div>
+                  <AppChrome>{children}</AppChrome>
                 </VoiceCallProvider>
               </UnifiedChatProvider>
             </CapabilityAccessProvider>
