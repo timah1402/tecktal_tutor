@@ -109,21 +109,43 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Called by useRealtimeVoiceCall at response.done, before function calls
-  // are dispatched. Voice greetings / Q&A are never auto-recorded — the user
-  // explicitly asked for that. When there ARE function calls, we snapshot the
-  // exchange so switch_capability can write it to the new chat session.
+  // are dispatched.
+  //
+  // Function-call turns → snapshot texts for switch_capability to consume.
+  //
+  // Pure Q&A turns (no function call):
+  //   • If the user is already inside a session (quiz, research, solve, …)
+  //     → append both sides as written text to that session so the voice
+  //     conversation shows up identically to a typed one.
+  //   • If there is no session yet (empty home) → voice-only; never create
+  //     a session the user didn't explicitly ask for.
   const handleTurnComplete = useCallback((hadFunctionCalls: boolean) => {
-    if (hadFunctionCalls) {
-      pendingExchangeForFunctionRef.current = {
-        userText: pendingUserTextRef.current ?? "",
-        assistantText: pendingAssistantTextRef.current ?? "",
-      };
-    } else {
-      pendingExchangeForFunctionRef.current = null;
-    }
+    const userText = pendingUserTextRef.current ?? "";
+    const assistantText = pendingAssistantTextRef.current ?? "";
     pendingUserTextRef.current = null;
     pendingAssistantTextRef.current = null;
-  }, []);
+
+    if (hadFunctionCalls) {
+      pendingExchangeForFunctionRef.current = { userText, assistantText };
+      return;
+    }
+    pendingExchangeForFunctionRef.current = null;
+
+    // Only record when there is already an active session. Both fields must
+    // be non-empty (backend enforces min_length=1 on each).
+    const currentSessionId = chat?.state.sessionId ?? null;
+    if (!currentSessionId || !userText || !assistantText) return;
+
+    void (async () => {
+      try {
+        await recordRealtimeExchange(currentSessionId, userText, assistantText);
+        // Reload so the new messages appear in the chat without a manual refresh.
+        await chat?.loadSession(currentSessionId);
+      } catch {
+        // Silently ignored — call still worked, just no written record
+      }
+    })();
+  }, [chat]);
 
   // The voice-navigable actions declared server-side (voice.py). AppSidebar
   // (and the call inside it) persists across every page, so navigate_to can
@@ -144,9 +166,12 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
       }
       switch (name) {
         case "navigate_to": {
-          const path = VOICE_PAGE_ROUTES[String(result.page || "")];
-          if (!path) return { status: "error", message: `Unknown page: ${result.page}` };
-          if (result.page === "home") {
+          // Use args (OpenAI's authoritative function call values) not result.*
+          // — the MCP server only signals ok/error, the args carry the data.
+          const page = String(args.page || "");
+          const path = VOICE_PAGE_ROUTES[page];
+          if (!path) return { status: "error", message: `Unknown page: ${page}` };
+          if (page === "home") {
             // Match what clicking the home icon does: cancel any in-flight
             // stream, reset to a fresh draft session, navigate to bare /home.
             // This is now safe because voice exchanges are never recorded —
@@ -158,10 +183,10 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
           return { status: "ok" };
         }
         case "switch_capability": {
-          const value = VOICE_CAPABILITY_VALUES[String(result.capability || "")];
+          const value = VOICE_CAPABILITY_VALUES[String(args.capability || "")];
           if (value === undefined) {
             pendingExchangeForFunctionRef.current = null;
-            return { status: "error", message: `Unknown capability: ${result.capability}` };
+            return { status: "error", message: `Unknown capability: ${args.capability}` };
           }
           // Consume (and clear) the snapshot so no other handler records it.
           const exchange = pendingExchangeForFunctionRef.current;
@@ -187,7 +212,7 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
           // still empty at snapshot time). Using `null` as sessionId always
           // creates a fresh session separate from whatever the home screen
           // was showing — voice capability switches land in their own chat.
-          const capabilityLabel = String(result.capability || value || "selected mode");
+          const capabilityLabel = String(args.capability || value || "selected mode");
           const userText = exchange?.userText || `Switch to ${capabilityLabel}`;
           const assistantText = exchange?.assistantText || `Switching to ${capabilityLabel}.`;
           try {
@@ -203,11 +228,36 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
           }
           return { status: "ok" };
         }
-        case "start_new_chat":
+        case "start_new_chat": {
           chat?.cancelStreamingTurn();
-          chat?.newSession();
-          router.push("/home");
+          // If a capability was active, animate its icon back to center before
+          // we leave; flushSync lets Framer Motion measure the transition.
+          flushSync(() => chat?.newSession());
+
+          // Consume the exchange snapshot so we can write it to the new session.
+          const startExchange = pendingExchangeForFunctionRef.current;
+          pendingExchangeForFunctionRef.current = null;
+
+          // Create a real session and navigate to it. On the empty home page
+          // "start new chat" used to be a no-op (already on /home, already
+          // a draft) — navigating to /home/${newId} makes the dock disappear
+          // and the chat view open, which is the visible "new session started"
+          // the user expects.
+          const startUserText = startExchange?.userText || "Start a new chat";
+          const startAssistantText = startExchange?.assistantText || "Starting a new chat!";
+          try {
+            const { sessionId: newId } = await recordRealtimeExchange(
+              null,
+              startUserText,
+              startAssistantText,
+              null,
+            );
+            router.push(`/home/${newId}`);
+          } catch {
+            router.push("/home");
+          }
           return { status: "ok" };
+        }
         case "open_history":
           openHistory();
           return { status: "ok" };
@@ -215,7 +265,7 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
           closeHistory();
           return { status: "ok" };
         case "set_theme": {
-          const requested = String(result.theme || "");
+          const requested = String(args.theme || "");
           if (!VOICE_THEME_VALUES.has(requested)) {
             return { status: "error", message: `Unknown theme: ${requested}` };
           }

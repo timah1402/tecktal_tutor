@@ -61,4 +61,18 @@ async def call_voice_action(name: str, arguments: dict[str, Any]) -> dict[str, A
     if result.structuredContent is not None:
         return result.structuredContent
 
+    # FastMCP serialises tool return-dicts as TextContent (JSON string), not
+    # as structuredContent, so the block above is often a no-op. Parse the
+    # text payload rather than silently dropping all fields (capability, page,
+    # theme, …) — losing them causes switch_capability to see result.capability
+    # = undefined and exit early without doing anything.
+    if result.content:
+        import json as _json
+        try:
+            parsed = _json.loads(result.content[0].text)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+
     return {"status": "ok"}
