@@ -22,7 +22,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import {
@@ -42,7 +42,7 @@ import {
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
 import { getAccentForIndex } from "@/lib/quick-action-colors";
-import { dispatchCapabilitySelect } from "@/context/app-shell-storage";
+import { dispatchCapabilitySelect, EXPAND_DOCK_EVENT } from "@/context/app-shell-storage";
 import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
 import { useVoiceCall } from "@/context/VoiceCallContext";
 
@@ -193,6 +193,17 @@ export function HeroQuickActions() {
   // true the moment "See more" is clicked, false again on remount (a fresh
   // session always starts back in the collapsed state).
   const [expanded, setExpanded] = useState(false);
+
+  // Allow voice commands (show_more / show_less in VoiceCallContext) to
+  // control the expanded state without lifting it out of this component.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ expanded: boolean }>).detail;
+      if (detail != null) setExpanded(detail.expanded);
+    };
+    window.addEventListener(EXPAND_DOCK_EVENT, handler);
+    return () => window.removeEventListener(EXPAND_DOCK_EVENT, handler);
+  }, []);
 
   // Once a tool is picked, the whole dock has moved into the sidebar
   // (QuickActionsPanel) — nothing to render here at all.

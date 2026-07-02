@@ -29,3 +29,6 @@ loguru>=0.7.3,<1.0.0
 json-repair>=0.57.0,<1.0.0
 # Built-in cron service (chat & partner scheduled tasks)
 croniter>=6.0.0,<7.0.0
+
+# --- MCP (voice's internal action server + the partners-extra MCP client) ---
+mcp>=1.26.0,<2.0.0

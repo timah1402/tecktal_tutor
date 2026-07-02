@@ -183,7 +183,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"v1 memory migration failed: {e}")
 
-    yield
+    # Runs the voice-actions MCP server's session manager for the app's
+    # lifetime. Mounting a FastMCP ASGI app via `app.mount()` does not by
+    # itself forward lifespan events to the sub-app, so the session manager
+    # must be driven from here instead of relying on
+    # `voice_actions_asgi_app()`'s own (never-triggered) lifespan.
+    from deeptutor.services.voice.mcp_action_server import mcp as voice_actions_mcp
+
+    async with voice_actions_mcp.session_manager.run():
+        yield
 
     # Execute on shutdown
     logger.info("Application shutdown")
@@ -301,6 +309,14 @@ app.mount(
     SafeOutputStaticFiles(directory=str(user_dir), path_service=path_service),
     name="outputs",
 )
+
+# Internal-only MCP server for voice-driven actions (see mcp_action_server.py
+# for why this is separate from the deeptutor.services.mcp client manager).
+# Reached only by mcp_action_client.py over loopback — never exposed to the
+# browser directly, so it isn't behind the `/api/v1` auth dependency.
+from deeptutor.services.voice.mcp_action_server import voice_actions_asgi_app
+
+app.mount("/internal/mcp/voice-actions", voice_actions_asgi_app(), name="voice-actions-mcp")
 
 # Import routers only after runtime settings are initialized.
 # Some router modules load YAML settings at import time.

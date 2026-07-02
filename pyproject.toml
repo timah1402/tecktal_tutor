@@ -57,6 +57,7 @@ dependencies = [
     "pocketbase>=0.12.0",
     "loguru>=0.7.3,<1.0.0",
     "json-repair>=0.57.0,<1.0.0",
+    "mcp>=1.26.0,<2.0.0",  # voice's internal MCP action server + the partners-extra MCP client
 ]
 
 [project.scripts]
@@ -109,7 +110,6 @@ server = [
 # IM platform SDKs and the MCP client used for deferred tools.
 partners = [
     "deeptutor[server]",
-    "mcp>=1.26.0,<2.0.0",
     "python-telegram-bot[socks]>=22.6,<23.0",
     "wecom-aibot-sdk>=1.0.8,<2.0.0",
     "lark-oapi>=1.5.0,<2.0.0",

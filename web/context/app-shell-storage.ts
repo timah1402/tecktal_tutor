@@ -65,6 +65,18 @@ export function dispatchCapabilitySelect(capability: string): void {
   );
 }
 
+// Fired by VoiceCallContext's show_more / show_less tool handlers so
+// HeroQuickActions can expand/collapse without lifting its local `expanded`
+// state up through the provider tree. Transient signal, not persisted.
+export const EXPAND_DOCK_EVENT = "deeptutor:expand-dock";
+
+export function dispatchExpandDock(expanded: boolean): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(EXPAND_DOCK_EVENT, { detail: { expanded } }),
+  );
+}
+
 // Fired by QuickActionsPanel's voice orb (its own independent
 // useVoiceRecorder instance — separate from the composer's mic button) once
 // a transcript comes back, so /home can drop it into the composer the same

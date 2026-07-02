@@ -12,9 +12,6 @@
 
 -r server.txt
 
-# --- MCP client (deferred tools for chat + partners) ---
-mcp>=1.26.0,<2.0.0
-
 # --- Channel SDKs ---
 python-telegram-bot[socks]>=22.6,<23.0
 # wecom (WeCom AI Bot WebSocket client)

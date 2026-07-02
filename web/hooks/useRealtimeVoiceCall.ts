@@ -47,6 +47,13 @@ export interface UseRealtimeVoiceCallOptions {
     name: string,
     args: Record<string, unknown>,
   ) => unknown | Promise<unknown>;
+  /**
+   * Fires at the end of every response turn (response.done), before function
+   * calls are dispatched. `hadFunctionCalls` is true when the model called at
+   * least one tool in this turn — callers use this to skip recording navigation/
+   * tool-call exchanges to chat history.
+   */
+  onTurnComplete?: (hadFunctionCalls: boolean) => void;
   /** Override for tests; production callers should leave this at the default. */
   silenceTimeoutMs?: number;
 }
@@ -189,12 +196,18 @@ export function useRealtimeVoiceCall(options: UseRealtimeVoiceCallOptions) {
         if (text) optionsRef.current.onAssistantUtterance?.(text);
         break;
       }
-      case "response.done":
-        if (event.response?.output?.length) {
-          void handleFunctionCalls(event.response.output);
-        }
+      case "response.done": {
+        const output = event.response?.output ?? [];
+        const hadFunctionCalls = output.some(
+          (item) => item.type === "function_call" && item.name,
+        );
+        // Fire before dispatching function calls so VoiceCallContext can
+        // decide whether to commit the pending exchange to chat history.
+        optionsRef.current.onTurnComplete?.(hadFunctionCalls);
+        if (output.length) void handleFunctionCalls(output);
         setState("listening");
         break;
+      }
       case "response.cancelled":
         setState("listening");
         break;

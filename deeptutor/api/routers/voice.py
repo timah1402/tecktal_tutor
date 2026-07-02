@@ -51,6 +51,32 @@ _REALTIME_CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secret
 # action once the model decides to call one of these mid-conversation. The
 # voice call itself now lives in a sidebar mounted once at the app's root
 # layout, so it survives navigation between any of these pages.
+# System prompt for the realtime voice assistant. Explicit instructions are
+# critical: without them the model uses its own judgment about when to call
+# functions vs. just describing the action verbally — leading to commands like
+# "switch to quiz" being acknowledged out loud but never actually executed.
+_REALTIME_INSTRUCTIONS = (
+    "You are the voice interface for DeepTutor, an AI tutoring platform. "
+    "Your primary job is to help users control the app by voice and to answer "
+    "educational questions concisely.\n\n"
+    "CRITICAL RULE — tool use: whenever the user asks to navigate, switch modes, "
+    "start a new chat, open/close history, change the theme, or expand/collapse "
+    "the menu, you MUST call the matching function. Never describe the action "
+    "verbally without calling the function — the function is what actually makes "
+    "the app respond. Speak a short confirmation AFTER calling it.\n\n"
+    "Available actions (call the function, do not just say you will):\n"
+    "• navigate_to — go to a page: home, settings, partners, agents, co_writer, "
+    "book, learning_space, notebooks, memory, knowledge_center.\n"
+    "• switch_capability — change chat mode: chat, quiz, research, solve, "
+    "visualize, mastery_path.\n"
+    "• start_new_chat — clear the current conversation and open a fresh one.\n"
+    "• open_history / close_history — show or hide the past-conversations panel.\n"
+    "• set_theme — change the visual theme: light, dark, glass, snow, brand.\n"
+    "• show_more / show_less — expand or collapse the home-page action menu.\n\n"
+    "For everything else (questions, explanations, tutoring), just answer helpfully "
+    "and concisely — voice responses should be short."
+)
+
 _REALTIME_TOOLS = [
     {
         "type": "function",
@@ -140,6 +166,25 @@ _REALTIME_TOOLS = [
             "required": ["theme"],
         },
     },
+    {
+        "type": "function",
+        "name": "show_more",
+        "description": (
+            "Expand the home-page action menu to reveal all tools and nav "
+            "destinations. Use when the user says 'show more', 'expand', "
+            "'see all options', or similar."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "show_less",
+        "description": (
+            "Collapse the home-page action menu back to the headline tiles. "
+            "Use when the user says 'show less', 'collapse', 'hide', or similar."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
 ]
 
 
@@ -149,6 +194,15 @@ class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1)
     voice: str | None = None
     format: str | None = None
+
+
+class ExecuteActionRequest(BaseModel):
+    """A voice-triggered function call, as received from OpenAI's Realtime
+    API in the browser — relayed here so it executes through a real MCP
+    ``call_tool`` round-trip instead of a client-side switch-statement."""
+
+    name: str = Field(..., min_length=1)
+    arguments: dict[str, object] = Field(default_factory=dict)
 
 
 def _parse_pcm_content_type(content_type: str) -> tuple[int, int] | None:
@@ -289,6 +343,7 @@ async def create_realtime_session() -> dict[str, object]:
                     "session": {
                         "type": "realtime",
                         "model": _REALTIME_MODEL,
+                        "instructions": _REALTIME_INSTRUCTIONS,
                         "audio": {
                             "input": {
                                 # Without this, the API never emits
@@ -331,3 +386,28 @@ async def create_realtime_session() -> dict[str, object]:
         "expires_at": data.get("expires_at"),
         "model": _REALTIME_MODEL,
     }
+
+
+@router.post("/execute-action")
+async def execute_voice_action(payload: ExecuteActionRequest) -> dict[str, object]:
+    """Execute a voice-triggered function call through the internal
+    voice-actions MCP server (see ``deeptutor.services.voice.mcp_action_server``).
+
+    The browser still owns the actual realtime connection and still has to
+    apply the result locally (only it can navigate its own router, change
+    its own React state, etc.) — this endpoint is the validation/execution
+    step in between, and it's a real MCP ``call_tool`` round-trip, not a
+    second copy of the validation logic.
+    """
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.multi_user.model_access import has_capability_access
+    from deeptutor.services.voice.mcp_action_client import call_voice_action
+
+    current_user = get_current_user()
+    if not current_user.is_admin and not has_capability_access("llm"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No LLM model is assigned to your account. Please contact an administrator.",
+        )
+
+    return await call_voice_action(payload.name, payload.arguments)
