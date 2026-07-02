@@ -22,6 +22,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useRealtimeVoiceCall, type RealtimeCallState } from "@/hooks/useRealtimeVoiceCall";
@@ -29,6 +30,7 @@ import { dispatchCapabilitySelect, dispatchExpandDock } from "@/context/app-shel
 import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
 import { setTheme, type Theme } from "@/lib/theme";
 import { executeVoiceAction } from "@/lib/voice-api";
+import { recordRealtimeExchange } from "@/lib/session-api";
 
 // Maps the voice-facing capability names declared in voice.py's session
 // config to this app's internal capability values (see QuickActionsPanel's
@@ -86,30 +88,39 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   const openHistory = useCallback(() => setHistoryOpen(true), []);
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
 
-  // Pairs a finished user utterance with the assistant's reply that follows
-  // it, then persists the pair together (the backend appends both messages
-  // in one call) and reconciles local state via the same loadSession() path
-  // normal typed turns already use. Both refs, not state — this is plumbing
-  // between event callbacks, not something that should re-render.
+  // Pair a finished user utterance with the assistant's reply, accumulated
+  // across the turn's events. Both refs (not state) — plumbing between
+  // event callbacks, never triggers a re-render.
   const pendingUserTextRef = useRef<string | null>(null);
   const pendingAssistantTextRef = useRef<string | null>(null);
+  // When response.done carries function calls, we snapshot the exchange here
+  // before clearing the primary refs, so switch_capability can write it to
+  // the new session as a written record of the voice command.
+  const pendingExchangeForFunctionRef = useRef<{ userText: string; assistantText: string } | null>(null);
 
   const handleUserUtterance = useCallback((text: string) => {
     pendingUserTextRef.current = text;
   }, []);
 
-  // Store the assistant text but DON'T record yet — we don't know until
-  // response.done whether this turn also included a function call.
-  // onTurnComplete (below) commits or discards the pending exchange.
+  // Store the assistant text but don't record yet — response.done may still
+  // carry function calls. onTurnComplete decides what to do with it.
   const handleAssistantUtterance = useCallback((text: string) => {
     pendingAssistantTextRef.current = text;
   }, []);
 
-  // Called by useRealtimeVoiceCall at response.done. Voice is a separate
-  // interface from chat — exchanges are never auto-recorded. A chat session
-  // only starts when the user explicitly asks for one (typed message or
-  // "start new chat" voice command). Just clear the pending refs.
-  const handleTurnComplete = useCallback((_hadFunctionCalls: boolean) => {
+  // Called by useRealtimeVoiceCall at response.done, before function calls
+  // are dispatched. Voice greetings / Q&A are never auto-recorded — the user
+  // explicitly asked for that. When there ARE function calls, we snapshot the
+  // exchange so switch_capability can write it to the new chat session.
+  const handleTurnComplete = useCallback((hadFunctionCalls: boolean) => {
+    if (hadFunctionCalls) {
+      pendingExchangeForFunctionRef.current = {
+        userText: pendingUserTextRef.current ?? "",
+        assistantText: pendingAssistantTextRef.current ?? "",
+      };
+    } else {
+      pendingExchangeForFunctionRef.current = null;
+    }
     pendingUserTextRef.current = null;
     pendingAssistantTextRef.current = null;
   }, []);
@@ -149,16 +160,46 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
         case "switch_capability": {
           const value = VOICE_CAPABILITY_VALUES[String(result.capability || "")];
           if (value === undefined) {
+            pendingExchangeForFunctionRef.current = null;
             return { status: "error", message: `Unknown capability: ${result.capability}` };
           }
+          // Consume (and clear) the snapshot so no other handler records it.
+          const exchange = pendingExchangeForFunctionRef.current;
+          pendingExchangeForFunctionRef.current = null;
+
           if (pathname.startsWith("/home")) {
-            // Already on /home — fire in-place; the listener in home/page.tsx
-            // is mounted right now, no navigation needed.
-            dispatchCapabilitySelect(value);
+            // Already on /home — fire in-place. flushSync forces React to
+            // commit the setCapability state update synchronously so Framer
+            // Motion can measure both the departing hero tiles and the arriving
+            // badge/strip in the same layout phase, giving us the FLIP
+            // animation — without it, React 18's automatic batching defers the
+            // commit past the layout snapshot and the animation never fires.
+            flushSync(() => dispatchCapabilitySelect(value));
           } else {
-            // Off /home — navigate with the capability as a query param so
-            // home/page.tsx's mount effect picks it up cleanly on arrival.
             router.push(value ? `/home?capability=${value}` : "/home");
+          }
+
+          // Write the voice exchange as text in a new session so the user can
+          // read the conversation, not just hear it. Always record — the
+          // backend requires min_length=1 for both fields so we supply a
+          // fallback when the model called the function without speaking (or
+          // the transcription event raced past response.done and the refs were
+          // still empty at snapshot time). Using `null` as sessionId always
+          // creates a fresh session separate from whatever the home screen
+          // was showing — voice capability switches land in their own chat.
+          const capabilityLabel = String(result.capability || value || "selected mode");
+          const userText = exchange?.userText || `Switch to ${capabilityLabel}`;
+          const assistantText = exchange?.assistantText || `Switching to ${capabilityLabel}.`;
+          try {
+            const { sessionId: newId } = await recordRealtimeExchange(
+              null,
+              userText,
+              assistantText,
+              value || null,
+            );
+            router.push(`/home/${newId}`);
+          } catch {
+            // Recording failed — capability animation already happened; no crash
           }
           return { status: "ok" };
         }
