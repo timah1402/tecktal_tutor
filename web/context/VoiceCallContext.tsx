@@ -131,20 +131,15 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     }
     pendingExchangeForFunctionRef.current = null;
 
-    // Only record when there is already an active session. Both fields must
-    // be non-empty (backend enforces min_length=1 on each).
+    // Only record when there is already an active session and the user actually
+    // said something. Route through sendMessage (same path as typing) so the
+    // capability pipeline generates a properly formatted markdown response —
+    // storing the raw spoken assistant text produces plain prose with no
+    // markdown structure, which looks poor compared to typed responses.
     const currentSessionId = chat?.state.sessionId ?? null;
-    if (!currentSessionId || !userText || !assistantText) return;
+    if (!currentSessionId || !userText) return;
 
-    void (async () => {
-      try {
-        await recordRealtimeExchange(currentSessionId, userText, assistantText);
-        // Reload so the new messages appear in the chat without a manual refresh.
-        await chat?.loadSession(currentSessionId);
-      } catch {
-        // Silently ignored — call still worked, just no written record
-      }
-    })();
+    chat?.sendMessage(userText);
   }, [chat]);
 
   // The voice-navigable actions declared server-side (voice.py). AppSidebar
