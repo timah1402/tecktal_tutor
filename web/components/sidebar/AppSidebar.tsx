@@ -4,9 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { QuickActionsPanel } from "@/components/sidebar/QuickActionsPanel";
-import { LogoutButton } from "@/components/auth/LogoutButton";
-import { AdminLink } from "@/components/auth/AdminLink";
-import { ProfileLink } from "@/components/auth/ProfileLink";
+import { UserMenu } from "@/components/auth/UserMenu";
 import { useUnifiedChat } from "@/context/UnifiedChatContext";
 import {
   deleteSession,
@@ -124,13 +122,7 @@ export default function AppSidebar() {
       onSelectSession={handleSelectSession}
       onRenameSession={handleRenameSession}
       onDeleteSession={handleDeleteSession}
-      footerSlot={(collapsed) => (
-        <>
-          <ProfileLink collapsed={collapsed} />
-          <AdminLink collapsed={collapsed} />
-          <LogoutButton collapsed={collapsed} />
-        </>
-      )}
+      footerSlot={(collapsed) => <UserMenu collapsed={collapsed} />}
     />
   );
 }

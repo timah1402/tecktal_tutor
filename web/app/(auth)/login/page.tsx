@@ -10,8 +10,6 @@ function LoginPageContent() {
   const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/";
-
   const registered = searchParams.get("registered") === "1";
 
   const [username, setUsername] = useState("");
@@ -23,7 +21,7 @@ function LoginPageContent() {
     // If already authenticated, skip login
     fetchAuthStatus().then((status) => {
       if (status?.authenticated) {
-        router.replace(next);
+        window.location.href = "/home";
         return;
       }
       // No users registered yet — send straight to the registration page
@@ -31,7 +29,7 @@ function LoginPageContent() {
         if (first) router.replace("/register");
       });
     });
-  }, [router, next]);
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +39,7 @@ function LoginPageContent() {
     const result = await login(username, password);
 
     if (result.ok) {
-      router.replace(next);
+      window.location.href = "/home";
     } else {
       setError(result.error ?? t("Login failed"));
       setLoading(false);

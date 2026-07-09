@@ -223,6 +223,7 @@ export function HeroQuickActions() {
     event.preventDefault();
     chat?.cancelStreamingTurn();
     chat?.newSession();
+    setExpanded(false);
     router.push("/home");
   };
 

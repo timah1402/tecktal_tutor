@@ -3,9 +3,9 @@
 /**
  * QuickActionsPanel — the sidebar shell.
  *
- * Normally just the logo header, the RAG Provider section, and the footer
- * (profile/admin/logout/version/docs/github) — the icon-tile grid and the
- * voice button live in the home page's centered dock (HeroQuickActions)
+ * Normally just the logo header and the footer (account menu/version/docs/
+ * github) — the icon-tile grid and the voice button live in the home page's
+ * centered dock (HeroQuickActions)
  * while no tool is picked, so they're not duplicated in two places at once.
  *
  * The exception: once a tool *is* picked (and we're still on the empty
@@ -62,12 +62,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
 import { Tooltip } from "@/components/ui/Tooltip";
 import HistoryFlyout from "@/components/sidebar/HistoryFlyout";
-import KnowledgeSelector from "@/components/chat/home/KnowledgeSelector";
 import { dispatchCapabilitySelect } from "@/context/app-shell-storage";
 import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
 import { useVoiceCall } from "@/context/VoiceCallContext";
 import { getAccentForIndex } from "@/lib/quick-action-colors";
-import { listKnowledgeBases } from "@/lib/knowledge-api";
 import type { Capability } from "@/lib/capability-routes";
 import type { SessionSummary } from "@/lib/session-api";
 
@@ -114,10 +112,10 @@ export const NAV_TILES: QuickActionEntry[] = [
 // in place instead when already on /home (Step 5).
 export const CAPABILITY_TILES: QuickActionEntry[] = [
   { href: "/home", label: "Chat", icon: MessageSquare, capabilityValue: "" },
-  { href: "/home?capability=deep_question", label: "Quiz", icon: PenLine, capabilityValue: "deep_question" },
-  { href: "/home?capability=deep_research", label: "Research", icon: Microscope, capabilityValue: "deep_research" },
   { href: "/home?capability=deep_solve", label: "Solve", icon: BrainCircuit, capabilityValue: "deep_solve" },
   { href: "/home?capability=visualize", label: "Visualize", icon: BarChart3, capabilityValue: "visualize" },
+  { href: "/home?capability=deep_research", label: "Research", icon: Microscope, capabilityValue: "deep_research" },
+  { href: "/home?capability=deep_question", label: "Quiz", icon: PenLine, capabilityValue: "deep_question" },
   { href: "/home?capability=mastery_path", label: "Mastery Path", icon: GraduationCap, capabilityValue: "mastery_path" },
 ];
 
@@ -346,77 +344,6 @@ function StripIcon({
   );
 }
 
-/**
- * Live KB selector, but only on /home: that's the only place the selected
- * scope (state.knowledgeBases / setKBs, owned by UnifiedChatContext) is
- * meaningful, and it's the single source of truth the composer's own KB
- * chip already reads/writes — duplicating it elsewhere would risk drift.
- * The KB *catalog* (what's available, not what's selected) isn't in that
- * context though, so this fetches it independently via the same shared
- * listKnowledgeBases() client-cache helper page.tsx uses — same precedent
- * as AppSidebar independently calling listSessions(). Elsewhere (any
- * non-/home route) this renders a static fallback instead.
- */
-function RagProviderSection() {
-  const pathname = usePathname();
-  const { t } = useTranslation();
-  const onHome = pathname.startsWith("/home");
-  const chat = useUnifiedChatSafe();
-  const [catalog, setCatalog] = useState<{ name: string }[]>([]);
-
-  useEffect(() => {
-    if (!onHome) return;
-    let cancelled = false;
-    listKnowledgeBases()
-      .then((list) => {
-        if (cancelled) return;
-        setCatalog(
-          list
-            .filter((kb) => kb.metadata?.type !== "subagent")
-            .map((kb) => ({ name: kb.name })),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setCatalog([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [onHome]);
-
-  return (
-    <>
-      <div className="mb-1.5 px-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)]/70">
-        {t("RAG Provider")}
-      </div>
-      {onHome && chat ? (
-        <div className="rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-2 py-1.5">
-          <KnowledgeSelector
-            knowledgeBases={catalog}
-            selected={chat.state.knowledgeBases}
-            onToggle={(name) => {
-              const current = chat.state.knowledgeBases;
-              chat.setKBs(
-                current.includes(name)
-                  ? current.filter((kb) => kb !== name)
-                  : [...current, name],
-              );
-            }}
-            placement="bottom"
-          />
-        </div>
-      ) : (
-        <Link
-          href="/home"
-          className="block rounded-xl border border-[var(--border)]/55 bg-[var(--card)] px-3 py-2 text-[12px] text-[var(--muted-foreground)]/70 transition-colors hover:border-[var(--primary)]/30 hover:text-[var(--foreground)]"
-        >
-          {t("Open a chat to set a Knowledge Base")}
-        </Link>
-      )}
-    </>
-  );
-}
-
 export function QuickActionsPanel({
   sessions = [],
   activeSessionId = null,
@@ -529,17 +456,14 @@ export function QuickActionsPanel({
         </button>
 
         {/* Header */}
-      <Link href="/" className="group flex items-center gap-2 px-1">
+      <Link href="/" aria-label="TECKTAL TUTOR" className="group flex items-center px-1">
         <Image
           src="/logo.png"
           alt="TECKTAL TUTOR"
-          width={26}
-          height={26}
-          className="h-[26px] w-[26px] transition-transform duration-200 group-hover:scale-105"
+          width={40}
+          height={40}
+          className="h-10 w-10 transition-transform duration-200 group-hover:scale-105"
         />
-        <span className="font-serif text-base font-semibold tracking-tight text-[var(--foreground)]">
-          TECKTAL TUTOR
-        </span>
       </Link>
 
       {/* Collapsed strip — only while a tool is picked on the empty /home
@@ -614,13 +538,8 @@ export function QuickActionsPanel({
         </div>
       )}
 
-      {/* RAG Provider */}
-      <div className="mt-auto">
-        <RagProviderSection />
-      </div>
-
-      {/* Footer — Profile / Admin / Logout (carried over from SidebarShell) */}
-      <div className="border-t border-[var(--border)]/40 pt-2">
+      {/* Footer — account menu / version / docs / github */}
+      <div className="mt-auto border-t border-[var(--border)]/40 pt-2">
         {renderedFooter}
       </div>
 

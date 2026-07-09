@@ -324,17 +324,14 @@ export function SidebarShell({
     <aside className="flex w-[220px] h-screen shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
       {/* Header: logo + collapse toggle */}
       <div className="flex h-14 items-center justify-between px-4">
-        <Link href="/" className="group flex items-center gap-1.5">
+        <Link href="/" aria-label="TECKTAL TUTOR" className="group flex items-center">
           <Image
             src="/logo.png"
             alt="TECKTAL TUTOR"
-            width={22}
-            height={22}
-            className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
+            width={36}
+            height={36}
+            className="h-9 w-9 transition-transform duration-200 group-hover:scale-105"
           />
-          <span className="font-serif text-base font-semibold tracking-tight text-[var(--foreground)] transition-transform duration-200 group-hover:scale-105">
-            TECKTAL TUTOR
-          </span>
         </Link>
         <button
           onClick={() => setCollapsed(true)}

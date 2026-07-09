@@ -666,8 +666,7 @@ export default function ChatPage() {
     [state.messages],
   );
   const persistedSessionTitle = state.sessionTitle.trim();
-  const displaySessionTitle =
-    persistedSessionTitle || firstUserTitle || t("New chat");
+  const displaySessionTitle = persistedSessionTitle || firstUserTitle;
   const canRenameSession = Boolean(state.sessionId);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const skipTitleCommitRef = useRef(false);
@@ -1752,7 +1751,7 @@ export default function ChatPage() {
                   className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] shadow-sm outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20 disabled:opacity-60"
                   maxLength={100}
                 />
-              ) : (
+              ) : displaySessionTitle ? (
                 <button
                   type="button"
                   onClick={startSessionTitleEdit}
@@ -1769,7 +1768,7 @@ export default function ChatPage() {
                     <PenLine className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover/title:opacity-100" />
                   ) : null}
                 </button>
-              )}
+              ) : null}
               {sessionTitleSaving ? (
                 <span className="shrink-0 text-xs text-[var(--muted-foreground)]">
                   {t("Saving...")}
