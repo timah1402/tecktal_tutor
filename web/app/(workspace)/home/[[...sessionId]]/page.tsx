@@ -60,6 +60,7 @@ import {
   type MessageRequestSnapshot,
 } from "@/context/UnifiedChatContext";
 import { useAppShell } from "@/context/AppShellContext";
+import { useVoiceCall } from "@/context/VoiceCallContext";
 import {
   CAPABILITY_SELECT_EVENT,
   VOICE_TRANSCRIPT_EVENT,
@@ -322,6 +323,7 @@ export default function ChatPage() {
   const { t } = useTranslation();
   const sessionIdParam = params.sessionId?.[0] ?? null;
   const { setActiveSessionId, language: appLanguage } = useAppShell();
+  const voiceCall = useVoiceCall();
 
   const {
     state,
@@ -1481,6 +1483,21 @@ export default function ChatPage() {
       visualizeConfig,
     ],
   );
+
+  // Let the realtime voice call route a spoken question through this same
+  // send path (attachments, capability config, etc. included) instead of a
+  // bare text-only message — otherwise "solve what's inside the file" right
+  // after a voice-driven upload would never actually reach the model with
+  // the file attached. Re-registers whenever handleSend's own dependencies
+  // (attachments among them) change, so the bridge always sees the latest
+  // upload tray.
+  useEffect(() => {
+    voiceCall.registerComposerBridge({
+      hasPendingAttachments: () => attachments.length > 0,
+      send: (text: string) => void handleSend(text),
+    });
+    return () => voiceCall.registerComposerBridge(null);
+  }, [voiceCall, handleSend, attachments]);
 
   const handleConfirmOutline = useCallback(
     (

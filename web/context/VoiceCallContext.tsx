@@ -71,6 +71,15 @@ const VOICE_PAGE_ROUTES: Record<string, string> = {
   knowledge_center: "/knowledge",
 };
 
+// Registered by the home page (the one composer that owns file-upload state)
+// so voice can route a spoken question through the same send path as typing
+// — attachments included — instead of the plain chat.sendMessage(text) call,
+// which drops whatever is staged in the composer's upload tray.
+export interface VoiceComposerBridge {
+  hasPendingAttachments: () => boolean;
+  send: (text: string) => void;
+}
+
 interface VoiceCallContextValue {
   state: RealtimeCallState;
   error: string | null;
@@ -80,6 +89,7 @@ interface VoiceCallContextValue {
   historyOpen: boolean;
   openHistory: () => void;
   closeHistory: () => void;
+  registerComposerBridge: (bridge: VoiceComposerBridge | null) => void;
 }
 
 const VoiceCallCtx = createContext<VoiceCallContextValue | null>(null);
@@ -91,6 +101,11 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const openHistory = useCallback(() => setHistoryOpen(true), []);
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
+
+  const composerBridgeRef = useRef<VoiceComposerBridge | null>(null);
+  const registerComposerBridge = useCallback((bridge: VoiceComposerBridge | null) => {
+    composerBridgeRef.current = bridge;
+  }, []);
 
   // Pair a finished user utterance with the assistant's reply, accumulated
   // across the turn's events. Both refs (not state) — plumbing between
@@ -117,11 +132,15 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   //
   // Function-call turns → snapshot texts for switch_capability to consume.
   //
-  // Pure Q&A turns (no function call): always write the exchange as text,
-  // whether or not a session is already active — sendMessage auto-creates a
-  // draft session the same way typing a first message on the empty home
-  // page does, so voice questions show up in writing exactly like typed
-  // ones instead of being spoken-only.
+  // Pure Q&A turns (no function call):
+  //   • If the user is already inside a session (quiz, research, solve, …),
+  //     or has a file staged in the composer's upload tray (e.g. "solve
+  //     what's inside the file" right after uploading it) → send it, so it
+  //     lands in writing and — when a file is attached — actually reaches
+  //     the model as an attachment instead of being silently dropped.
+  //   • Otherwise (empty home, nothing attached) → voice-only; never create
+  //     a session the user didn't explicitly ask for. A stray "hello" on
+  //     the home page should just get a spoken reply, not pop open a chat.
   const handleTurnComplete = useCallback((hadFunctionCalls: boolean) => {
     const userText = pendingUserTextRef.current ?? "";
     const assistantText = pendingAssistantTextRef.current ?? "";
@@ -133,14 +152,24 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     pendingExchangeForFunctionRef.current = null;
-
-    // Route through sendMessage (same path as typing) so the capability
-    // pipeline generates a properly formatted markdown response — storing
-    // the raw spoken assistant text produces plain prose with no markdown
-    // structure, which looks poor compared to typed responses.
     if (!userText) return;
 
-    chat?.sendMessage(userText);
+    const bridge = composerBridgeRef.current;
+    const hasPendingAttachments = bridge?.hasPendingAttachments() ?? false;
+    const currentSessionId = chat?.state.sessionId ?? null;
+    if (!currentSessionId && !hasPendingAttachments) return;
+
+    // Route through the same send path as typing (the composer bridge when
+    // available, so staged attachments ride along; otherwise plain
+    // sendMessage) so the capability pipeline generates a properly
+    // formatted markdown response — storing the raw spoken assistant text
+    // produces plain prose with no markdown structure, which looks poor
+    // compared to typed responses.
+    if (bridge) {
+      bridge.send(userText);
+    } else {
+      chat?.sendMessage(userText);
+    }
   }, [chat]);
 
   // The voice-navigable actions declared server-side (voice.py). AppSidebar
@@ -305,6 +334,7 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
         historyOpen,
         openHistory,
         closeHistory,
+        registerComposerBridge,
       }}
     >
       {children}

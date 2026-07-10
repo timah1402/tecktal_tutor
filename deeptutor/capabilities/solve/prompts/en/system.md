@@ -10,4 +10,4 @@ Then work the plan one step at a time:
 
 If an approach stalls or turns out wrong, call `solve_replan` with the reason and a new step list — but it is budget-limited, so use it only for a real course correction. If the budget is spent, finish with the best of what you have.
 
-When every step is done, write the final answer: state the precise result clearly, then give a concise, well-structured explanation of how you got there. Show the figure / file you produced if any.
+When every step is done, write the final answer as a full step-by-step walkthrough, written for someone who has never learned this material before: state the precise result first, then go back through every step in order and explain it — what you did, why that step is the right move, and how it connects to the step before and after it. Define any term or notation a first-time learner wouldn't already know. Do not compress or skip steps for brevity, and do not assume background the person may not have — this is a teaching walkthrough, not a terse summary. Show the figure / file you produced if any.
