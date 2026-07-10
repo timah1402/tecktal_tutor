@@ -77,7 +77,7 @@ const VOICE_PAGE_ROUTES: Record<string, string> = {
 // which drops whatever is staged in the composer's upload tray.
 export interface VoiceComposerBridge {
   hasPendingAttachments: () => boolean;
-  send: (text: string) => void;
+  send: (text: string, configOverride?: Record<string, unknown>) => void;
 }
 
 interface VoiceCallContextValue {
@@ -103,8 +103,18 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
 
   const composerBridgeRef = useRef<VoiceComposerBridge | null>(null);
+  // Set by switch_capability when it navigates to /home for a spoken
+  // visualize (etc.) request but the composer bridge isn't mounted yet —
+  // flushed the moment the bridge registers, so the request still reaches
+  // the real send pipeline instead of being dropped.
+  const pendingBridgeSendRef = useRef<{ text: string; config?: Record<string, unknown> } | null>(null);
   const registerComposerBridge = useCallback((bridge: VoiceComposerBridge | null) => {
     composerBridgeRef.current = bridge;
+    if (bridge && pendingBridgeSendRef.current) {
+      const pending = pendingBridgeSendRef.current;
+      pendingBridgeSendRef.current = null;
+      bridge.send(pending.text, pending.config);
+    }
   }, []);
 
   // Pair a finished user utterance with the assistant's reply, accumulated
@@ -216,6 +226,13 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
           // Consume (and clear) the snapshot so no other handler records it.
           const exchange = pendingExchangeForFunctionRef.current;
           pendingExchangeForFunctionRef.current = null;
+          // Model-supplied, not derived from the raw transcript: the model
+          // only fills this in when the user actually described concrete
+          // content (see the tool's `request` param description in
+          // voice.py). Any spoken utterance reaches switch_capability — even
+          // a bare "switch to visualize mode" — so gating on transcript
+          // presence would fire generation on every mode switch.
+          const explicitRequest = String(args.request || "").trim();
 
           if (pathname.startsWith("/home")) {
             // Already on /home — fire in-place. flushSync forces React to
@@ -229,21 +246,48 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
             router.push(value ? `/home?capability=${value}` : "/home");
           }
 
-          // Write the voice exchange as text in a new session so the user can
-          // read the conversation, not just hear it. Always record — the
-          // backend requires min_length=1 for both fields so we supply a
-          // fallback when the model called the function without speaking (or
-          // the transcription event raced past response.done and the refs were
-          // still empty at snapshot time). Using `null` as sessionId always
-          // creates a fresh session separate from whatever the home screen
-          // was showing — voice capability switches land in their own chat.
-          const capabilityLabel = String(args.capability || value || "selected mode");
-          const userText = exchange?.userText || `Switch to ${capabilityLabel}`;
-          const assistantText = exchange?.assistantText || `Switching to ${capabilityLabel}.`;
+          // A bare mode switch ("switch to visualize mode", nothing else
+          // specific said) has nothing to generate and nothing worth
+          // recording — just switch and stop. Writing a fabricated exchange
+          // to a new session for this case used to make the app look like
+          // it was resolving a request the user never actually made.
+          if (!explicitRequest) {
+            return { status: "ok" };
+          }
+
+          // Visualize is generative: when the model tells us the user gave
+          // a concrete request (e.g. "visualize the water cycle"), route it
+          // through the same send path as typing so the real visualize
+          // pipeline runs and produces an actual chart — instead of just
+          // logging the spoken words as plain text, which never touches the
+          // pipeline (see record_realtime_exchange's docstring: "no
+          // turn/agent execution"). render_mode carries the format the
+          // model asked the user to choose (see VISUALIZING instructions in
+          // voice.py) — passed as a config override so it's honored even
+          // though the composer's own config panel was never opened.
+          if (value === "visualize") {
+            const renderMode = String(args.render_mode || "auto");
+            const config = { render_mode: renderMode, quality: "medium", style_hint: "" };
+            if (composerBridgeRef.current) {
+              composerBridgeRef.current.send(explicitRequest, config);
+            } else {
+              pendingBridgeSendRef.current = { text: explicitRequest, config };
+            }
+            return { status: "ok" };
+          }
+
+          // Other capabilities (quiz, research, solve, mastery_path) aren't
+          // wired to the real generation pipeline via voice yet — record the
+          // spoken request as text in a new session so it's at least visible,
+          // rather than silently dropping it. Using `null` as sessionId
+          // always creates a fresh session separate from whatever the home
+          // screen was showing — voice capability switches land in their
+          // own chat.
+          const assistantText = exchange?.assistantText || `Switching to ${String(args.capability || value)}.`;
           try {
             const { sessionId: newId } = await recordRealtimeExchange(
               null,
-              userText,
+              explicitRequest,
               assistantText,
               value || null,
             );

@@ -59,6 +59,7 @@ _PAGES = (
 )
 _CAPABILITIES = ("chat", "quiz", "research", "solve", "visualize", "mastery_path")
 _THEMES = ("light", "dark", "glass", "snow", "brand")
+_RENDER_MODES = ("auto", "svg", "chartjs", "mermaid", "html", "manim_video", "manim_image")
 
 
 def _error(message: str) -> dict[str, Any]:
@@ -74,11 +75,27 @@ def navigate_to(page: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def switch_capability(capability: str) -> dict[str, Any]:
-    """Switch the chat composer to a different mode/capability."""
+def switch_capability(
+    capability: str, request: str = "", render_mode: str = "auto"
+) -> dict[str, Any]:
+    """Switch the chat composer to a different mode/capability.
+
+    ``request`` is the concrete content to generate once switched (e.g. "the
+    water cycle" for visualize), left empty for a bare mode switch. Echoed
+    back unvalidated — the frontend decides what counts as a real request.
+    ``render_mode`` (visualize only) is the visual format the user asked for;
+    defaults to "auto" when unspecified.
+    """
     if capability not in _CAPABILITIES:
         return _error(f"Unknown capability: {capability}")
-    return {"status": "ok", "capability": capability}
+    if render_mode not in _RENDER_MODES:
+        return _error(f"Unknown render_mode: {render_mode}")
+    return {
+        "status": "ok",
+        "capability": capability,
+        "request": request,
+        "render_mode": render_mode,
+    }
 
 
 @mcp.tool()

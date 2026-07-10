@@ -89,7 +89,14 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "partners, agents, co_writer, book, learning_space, notebooks (the "
     "Notebooks library page itself), memory, knowledge_center.\n"
     "• switch_capability — change chat mode: chat, quiz, research, solve, "
-    "visualize, mastery_path.\n"
+    "visualize, mastery_path. Only fill its `request` argument when the user "
+    "gave actual concrete content to generate (a topic, a chapter, a specific "
+    "thing to visualize) — that argument triggers real generation immediately. "
+    "For a bare mode switch with no specific content yet ('switch to "
+    "visualize mode', 'let's do a quiz'), call switch_capability with "
+    "`request` empty/omitted so it just changes the mode and waits for the "
+    "user to say what they want. For visualize specifically, see the "
+    "VISUALIZING section below before filling in `request`.\n"
     "• start_new_chat — clear the current conversation and open a fresh one.\n"
     "• open_history / close_history — show or hide the past-conversations panel.\n"
     "• set_theme — change the visual theme: light, dark, glass, snow, brand.\n"
@@ -111,6 +118,23 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "what you did and why, defining any term a first-time learner wouldn't "
     "know. Do not just say the final answer and do not compress the steps "
     "away for brevity.\n\n"
+    "VISUALIZING — you are audio-only and never generate the actual chart, "
+    "diagram, or figure yourself. When the user asks to visualize something "
+    "and does NOT already say what format they want, ask ONE short "
+    "follow-up first — e.g. \"Would you like that as a chart, a diagram, an "
+    "illustration, or an animation?\" — and wait for their answer before "
+    "calling switch_capability. Skip the question only if they already told "
+    "you the format, or if they explicitly say they don't care / want you to "
+    "choose (then use render_mode='auto'). Once you know both the content "
+    "and the format, call switch_capability(visualize) with `request` AND "
+    "`render_mode` filled in — that hands the request off to the real "
+    "visualization pipeline, which runs separately and takes a few seconds. "
+    "Never describe, draw, or narrate what the chart supposedly looks like, "
+    "you have not seen it and guessing produces a description that won't "
+    "match what's actually generated. Just acknowledge briefly, e.g. "
+    "\"Generating that now — check the chat.\" Keep it to one short "
+    "sentence, then stop. If `request` was left empty (bare mode switch), "
+    "just confirm the mode change and ask what they'd like visualized.\n\n"
     "UPLOADED FILES — you are audio-only and never receive the bytes of any "
     "file the user has attached in the app; solving it is handled elsewhere "
     "and appears in the chat. When the user asks you to solve, read, "
@@ -184,7 +208,38 @@ _REALTIME_TOOLS = [
                 "capability": {
                     "type": "string",
                     "enum": ["chat", "quiz", "research", "solve", "visualize", "mastery_path"],
-                }
+                },
+                "request": {
+                    "type": "string",
+                    "description": (
+                        "The specific thing to generate, ONLY if the user actually "
+                        "described concrete content — e.g. 'the water cycle' for "
+                        "'visualize the water cycle', or 'chapter 3 on photosynthesis' "
+                        "for 'quiz me on chapter 3'. Leave this empty/omit it entirely "
+                        "when the user only asked to switch modes with no specific "
+                        "content yet, e.g. 'switch to visualize mode' or 'let's do a "
+                        "quiz' — passing anything here starts real generation "
+                        "immediately, which would be wrong for a bare mode switch."
+                    ),
+                },
+                "render_mode": {
+                    "type": "string",
+                    "enum": ["auto", "svg", "chartjs", "mermaid", "html", "manim_video", "manim_image"],
+                    "description": (
+                        "Only used when capability='visualize' and `request` is "
+                        "filled in — the visual format the user wants. Map their "
+                        "words to: a bar/line/pie/data chart -> 'chartjs'; a "
+                        "diagram, flowchart, or process/relationship map -> "
+                        "'mermaid'; a precise vector drawing/illustration/geometry "
+                        "figure -> 'svg'; an interactive page or simulation -> "
+                        "'html'; a narrated video/motion animation -> "
+                        "'manim_video'; a still storyboard of an animation -> "
+                        "'manim_image'. Use 'auto' only if the user explicitly "
+                        "says they don't care or want you to choose — otherwise "
+                        "ask them first (see VISUALIZING instructions) rather "
+                        "than guessing."
+                    ),
+                },
             },
             "required": ["capability"],
         },

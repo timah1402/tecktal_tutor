@@ -1370,7 +1370,7 @@ export default function ChatPage() {
   );
 
   const handleSend = useCallback(
-    async (content: string) => {
+    async (content: string, configOverride?: Record<string, unknown>) => {
       if (
         (!content &&
           !attachments.length &&
@@ -1413,6 +1413,11 @@ export default function ChatPage() {
         if (!researchValidation.valid) return;
         config = buildResearchWSConfig(researchConfig);
       }
+      // Voice-triggered sends carry their own config (e.g. a spoken render
+      // mode preference) that bypasses the composer's own config panel —
+      // merge it on top so it wins over the panel's (possibly stale/default)
+      // values without requiring the user to have opened the panel at all.
+      if (configOverride) config = { ...(config ?? {}), ...configOverride };
       // When a connected agent is selected, carry the per-turn consult budget
       // (how many times DeepTutor may ask it) so the subagent capability uses it.
       if (selectedAgent && subagentBudget) {
@@ -1494,7 +1499,8 @@ export default function ChatPage() {
   useEffect(() => {
     voiceCall.registerComposerBridge({
       hasPendingAttachments: () => attachments.length > 0,
-      send: (text: string) => void handleSend(text),
+      send: (text: string, configOverride?: Record<string, unknown>) =>
+        void handleSend(text, configOverride),
     });
     return () => voiceCall.registerComposerBridge(null);
   }, [voiceCall, handleSend, attachments]);
