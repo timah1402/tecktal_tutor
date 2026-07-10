@@ -119,6 +119,18 @@ def show_less() -> dict[str, Any]:
     return {"status": "ok"}
 
 
+@mcp.tool()
+def save_quiz_to_notebook() -> dict[str, Any]:
+    """Save the quiz the user is currently taking to their notebook."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def download_quiz() -> dict[str, Any]:
+    """Download the quiz the user is currently taking as a Markdown file."""
+    return {"status": "ok"}
+
+
 _asgi_app = None
 
 

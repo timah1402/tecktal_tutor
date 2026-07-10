@@ -1625,6 +1625,7 @@ class TurnRuntimeManager:
                 skills_manifest=skills_manifest,
                 source_manifest=source_manifest_text,
                 metadata={
+                    "username": current_user.username,
                     "conversation_summary": history_result.conversation_summary,
                     "conversation_context_text": conversation_context_text,
                     "history_token_count": history_result.token_count,

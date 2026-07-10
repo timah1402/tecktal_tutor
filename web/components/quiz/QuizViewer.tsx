@@ -8,17 +8,20 @@ import {
   useRef,
   useState,
 } from "react";
+import dynamic from "next/dynamic";
 import {
   Bookmark,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Download,
   Eye,
   FolderPlus,
   ImagePlus,
   Loader2,
   MessageSquarePlus,
+  NotebookPen,
   Plus,
   RotateCcw,
   Sparkles,
@@ -31,6 +34,10 @@ import {
   useQuizFollowupController,
 } from "@/context/QuizFollowupContext";
 import {
+  QUIZ_SESSION_ACTION_EVENT,
+  type QuizSessionAction,
+} from "@/context/app-shell-storage";
+import {
   isChoiceQuizQuestion,
   isConceptQuizQuestion,
   isFillInBlankQuizQuestion,
@@ -42,18 +49,35 @@ import {
   startQuizJudge,
   type QuizJudgeHandle,
 } from "@/lib/quiz-judge";
+import { downloadQuizMarkdown, type QuizExportRow } from "@/lib/quiz-export";
 import { type QuizQuestion } from "@/lib/quiz-types";
 import {
   addEntryToCategory,
   createCategory,
+  createNotebook,
   listCategories,
+  listNotebooks,
   lookupNotebookEntry,
+  saveNotebookRecord,
   updateNotebookEntry,
   upsertNotebookEntry,
   type NotebookCategory,
+  type NotebookSummary,
 } from "@/lib/notebook-api";
 import { recordQuizResults } from "@/lib/session-api";
 import { apiUrl } from "@/lib/api";
+import { notify } from "@/lib/notifications";
+
+const SaveToNotebookModal = dynamic(
+  () => import("@/components/notebook/SaveToNotebookModal"),
+  { ssr: false },
+);
+
+// Tracks the most-recently-mounted QuizViewer instance so a voice-triggered
+// save/download (dispatched globally, with no idea which quiz is "current")
+// only acts on the one the user is actually looking at, not every quiz ever
+// rendered into the chat history.
+let activeQuizInstanceId = 0;
 
 /** Resolve a possibly-relative AttachmentStore URL to an absolute one so
  *  ``<img src>`` works regardless of the API/frontend port pairing. */
@@ -228,6 +252,8 @@ export default function QuizViewer({
   >({});
   const judgeHandlesRef = useRef<Map<number, QuizJudgeHandle>>(new Map());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [showSessionSaveModal, setShowSessionSaveModal] = useState(false);
+  const instanceIdRef = useRef(0);
 
   useEffect(
     () => () => {
@@ -236,6 +262,14 @@ export default function QuizViewer({
     },
     [],
   );
+
+  // Claim "active" status on mount/update so voice-triggered save/download
+  // (which has no idea which of possibly several rendered quizzes the user
+  // means) always targets the one most recently on screen.
+  useEffect(() => {
+    activeQuizInstanceId += 1;
+    instanceIdRef.current = activeQuizInstanceId;
+  }, []);
 
   const q = questions[idx];
   const ans = answers[idx] ?? EMPTY_ANSWER;
@@ -436,6 +470,125 @@ export default function QuizViewer({
       }),
     [answers, questions],
   );
+
+  // Session-wide export/save: every answered question, regardless of
+  // whether the quiz is fully complete yet — the user should be able to
+  // save/download progress mid-quiz, not just at the end.
+  const exportRows = useMemo<QuizExportRow[]>(
+    () =>
+      questions.flatMap((question, questionIdx) => {
+        const answer = answers[questionIdx];
+        if (!answer?.submitted) return [];
+        return [
+          {
+            index: questionIdx,
+            question,
+            userAnswer: getUserAnswer(question, answer),
+            isCorrect: isAutoGradable(question)
+              ? isAnswerCorrect(question, answer)
+              : null,
+          },
+        ];
+      }),
+    [answers, questions],
+  );
+
+  const sessionTitle = useMemo(() => {
+    const first = questions[0]?.question?.trim() ?? "";
+    return first ? `Quiz: ${first.slice(0, 60)}` : "Quiz Session";
+  }, [questions]);
+
+  const sessionSavePayload = useMemo(() => {
+    if (exportRows.length === 0) return null;
+    return {
+      recordType: "question" as const,
+      title: sessionTitle,
+      userQuery: exportRows.map((row) => row.question.question).join("\n\n"),
+      output: exportRows
+        .map(
+          (row) =>
+            `Q${row.index + 1}. ${row.question.question}\nYour answer: ${
+              row.userAnswer || "(no answer)"
+            }\nCorrect answer: ${row.question.correct_answer}`,
+        )
+        .join("\n\n"),
+      metadata: {
+        source: "quiz",
+        session_id: sessionId ?? null,
+        turn_id: turnId ?? null,
+        total_questions: total,
+        answered_count: exportRows.length,
+        correct_count: exportRows.filter((row) => row.isCorrect).length,
+      },
+    };
+  }, [exportRows, sessionId, sessionTitle, total, turnId]);
+
+  const handleDownloadSession = useCallback(() => {
+    if (exportRows.length === 0) return;
+    downloadQuizMarkdown(exportRows, { title: sessionTitle });
+  }, [exportRows, sessionTitle]);
+
+  const handleCloseSessionSaveModal = useCallback(() => {
+    setShowSessionSaveModal(false);
+  }, []);
+
+  // Voice can't drive the notebook-picker modal (no hands to click "Save"),
+  // so a voice-triggered save has to complete on its own: pick the most
+  // recently updated notebook (or create one if the user has none yet) and
+  // save straight to it, then confirm with a toast. The button next to this
+  // still opens the picker modal for anyone who wants to choose or make a
+  // new notebook by hand.
+  const handleVoiceSaveSession = useCallback(async () => {
+    if (!sessionSavePayload) {
+      notify(t("No answered questions to save yet."), { tone: "error" });
+      return;
+    }
+    try {
+      const notebooks = await listNotebooks();
+      const target: NotebookSummary =
+        notebooks.length > 0
+          ? notebooks.reduce((latest, nb) =>
+              (nb.updated_at ?? 0) > (latest.updated_at ?? 0) ? nb : latest,
+            )
+          : await createNotebook({ name: t("Quiz Sessions") });
+      await saveNotebookRecord({
+        notebookIds: [target.id],
+        recordType: sessionSavePayload.recordType,
+        title: sessionSavePayload.title,
+        userQuery: sessionSavePayload.userQuery,
+        output: sessionSavePayload.output,
+        metadata: sessionSavePayload.metadata,
+      });
+      notify(t('Saved quiz to "{{name}}".', { name: target.name }), {
+        tone: "success",
+      });
+    } catch (err) {
+      notify(
+        err instanceof Error ? err.message : t("Failed to save quiz to notebook."),
+        { tone: "error" },
+      );
+    }
+  }, [sessionSavePayload, t]);
+
+  // Voice-triggered save/download (save_quiz_to_notebook / download_quiz
+  // tools, see VoiceCallContext.tsx) — only the currently-active instance
+  // reacts, so an earlier quiz still mounted in scroll-back history doesn't
+  // also fire.
+  useEffect(() => {
+    function onQuizSessionAction(event: Event) {
+      if (instanceIdRef.current !== activeQuizInstanceId) return;
+      const action = (event as CustomEvent<{ action: QuizSessionAction }>)
+        .detail?.action;
+      if (action === "save") void handleVoiceSaveSession();
+      else if (action === "download") handleDownloadSession();
+    }
+    window.addEventListener(QUIZ_SESSION_ACTION_EVENT, onQuizSessionAction);
+    return () =>
+      window.removeEventListener(
+        QUIZ_SESSION_ACTION_EVENT,
+        onQuizSessionAction,
+      );
+  }, [handleDownloadSession, handleVoiceSaveSession]);
 
   useEffect(() => {
     if (!sessionId || total === 0 || completedCount !== total) return;
@@ -856,6 +1009,27 @@ export default function QuizViewer({
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)]/60 text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--primary)] hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:border-[var(--border)] disabled:bg-transparent disabled:text-[var(--muted-foreground)] disabled:opacity-40 disabled:hover:bg-transparent"
         >
           <ChevronRight size={18} strokeWidth={2.5} />
+        </button>
+        <div className="mx-0.5 h-5 w-px shrink-0 bg-[var(--border)]" />
+        <button
+          type="button"
+          onClick={() => setShowSessionSaveModal(true)}
+          disabled={exportRows.length === 0}
+          title={t("Save quiz session to Notebook")}
+          aria-label={t("Save quiz session to Notebook")}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)]/60 text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--primary)] hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <NotebookPen size={16} strokeWidth={2.5} />
+        </button>
+        <button
+          type="button"
+          onClick={handleDownloadSession}
+          disabled={exportRows.length === 0}
+          title={t("Download quiz session as Markdown")}
+          aria-label={t("Download quiz session as Markdown")}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)]/60 text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--primary)] hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <Download size={16} strokeWidth={2.5} />
         </button>
       </div>
       <div className="h-0.5 bg-[var(--muted)]">
@@ -1420,6 +1594,11 @@ export default function QuizViewer({
             );
           })()}
       </div>
+      <SaveToNotebookModal
+        open={showSessionSaveModal}
+        payload={sessionSavePayload}
+        onClose={handleCloseSessionSaveModal}
+      />
     </div>
   );
 }

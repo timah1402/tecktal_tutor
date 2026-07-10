@@ -45,6 +45,19 @@ _REALTIME_DEFAULT_VOICE = "marin"
 _REALTIME_TRANSCRIBE_MODEL = "gpt-realtime-whisper"
 _REALTIME_CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets"
 
+# Left unset, OpenAI's default server VAD (threshold 0.5) is tuned for a quiet
+# room close to the mic and readily fires on ambient noise (typing, other
+# voices, background TV) picked up by laptop/phone mics in real environments.
+# Raising the threshold and padding trades a little responsiveness for far
+# fewer false "user is speaking" triggers. Tune here if users still report
+# the call reacting to background noise, or feeling sluggish to respond.
+_REALTIME_TURN_DETECTION = {
+    "type": "server_vad",
+    "threshold": 0.7,
+    "prefix_padding_ms": 300,
+    "silence_duration_ms": 600,
+}
+
 # Voice-driven in-app actions: navigating between pages, switching
 # capabilities, starting a new chat, opening/closing history, and changing
 # the theme. The frontend (VoiceOrb.tsx) is what actually performs each
@@ -55,8 +68,15 @@ _REALTIME_CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secret
 # critical: without them the model uses its own judgment about when to call
 # functions vs. just describing the action verbally — leading to commands like
 # "switch to quiz" being acknowledged out loud but never actually executed.
-_REALTIME_INSTRUCTIONS = (
-    "You are the voice interface for DeepTutor, an AI tutoring platform. "
+#
+# Built per-session (see _build_realtime_instructions) so it can be personalized
+# with the logged-in user's identity — the static string is just the shared
+# template.
+_REALTIME_INSTRUCTIONS_TEMPLATE = (
+    "You are the voice interface for TECKTAL Tutor, an AI tutoring platform. "
+    "Your name is \"TECKTAL Tutor\" — if asked your name, who you are, or who "
+    "made you, say you are TECKTAL Tutor. Never call yourself DeepTutor.\n\n"
+    "{user_identity}"
     "Your primary job is to help users control the app by voice and to answer "
     "educational questions concisely.\n\n"
     "CRITICAL RULE — tool use: whenever the user asks to navigate, switch modes, "
@@ -65,17 +85,38 @@ _REALTIME_INSTRUCTIONS = (
     "verbally without calling the function — the function is what actually makes "
     "the app respond. Speak a short confirmation AFTER calling it.\n\n"
     "Available actions (call the function, do not just say you will):\n"
-    "• navigate_to — go to a page: home, settings, partners, agents, co_writer, "
-    "book, learning_space, notebooks, memory, knowledge_center.\n"
+    "• navigate_to — go to a whole different PAGE of the app: home, settings, "
+    "partners, agents, co_writer, book, learning_space, notebooks (the "
+    "Notebooks library page itself), memory, knowledge_center.\n"
     "• switch_capability — change chat mode: chat, quiz, research, solve, "
     "visualize, mastery_path.\n"
     "• start_new_chat — clear the current conversation and open a fresh one.\n"
     "• open_history / close_history — show or hide the past-conversations panel.\n"
     "• set_theme — change the visual theme: light, dark, glass, snow, brand.\n"
-    "• show_more / show_less — expand or collapse the home-page action menu.\n\n"
+    "• show_more / show_less — expand or collapse the home-page action menu.\n"
+    "• save_quiz_to_notebook — save the quiz CONTENT the user is currently "
+    "taking into one of their notebooks. Use this — not navigate_to — whenever "
+    "the user says something like 'save this', 'save this quiz', 'save this "
+    "to my notebook(s)', or 'bookmark this' while a quiz is open. Only "
+    "navigate_to(page='notebooks') if they explicitly ask to open/go to the "
+    "notebooks page itself, not to save something into one.\n"
+    "• download_quiz — download the quiz the user is currently taking as a "
+    "file. Only call this while a quiz is open on screen.\n\n"
     "For everything else (questions, explanations, tutoring), just answer helpfully "
     "and concisely — voice responses should be short."
 )
+
+
+def _build_realtime_instructions(username: str) -> str:
+    """Fill the shared template with the logged-in user's identity, so the
+    model can answer "who am I?" instead of deflecting or guessing."""
+    identity = (
+        f'The person you are talking to is logged in as "{username}". If they '
+        f"ask who they are or what their username/account is, answer with that "
+        f"name directly instead of saying you don't know.\n\n"
+    )
+    return _REALTIME_INSTRUCTIONS_TEMPLATE.format(user_identity=identity)
+
 
 _REALTIME_TOOLS = [
     {
@@ -182,6 +223,30 @@ _REALTIME_TOOLS = [
         "description": (
             "Collapse the home-page action menu back to the headline tiles. "
             "Use when the user says 'show less', 'collapse', 'hide', or similar."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "save_quiz_to_notebook",
+        "description": (
+            "Save the quiz CONTENT the user is currently taking into one of "
+            "their notebooks. Use this for phrases like 'save this', 'save "
+            "this quiz', 'save this to my notebook(s)', or 'bookmark this' "
+            "while a quiz is open — this is different from navigate_to's "
+            "'notebooks' page, which just opens the notebooks list without "
+            "saving anything. Only meaningful while a quiz is open on screen."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "download_quiz",
+        "description": (
+            "Download the quiz the user is currently taking as a file. Use "
+            "when the user asks to download, export, or save a copy of the "
+            "current quiz to their device. Only meaningful while a quiz is "
+            "open on screen."
         ),
         "parameters": {"type": "object", "properties": {}},
     },
@@ -343,14 +408,15 @@ async def create_realtime_session() -> dict[str, object]:
                     "session": {
                         "type": "realtime",
                         "model": _REALTIME_MODEL,
-                        "instructions": _REALTIME_INSTRUCTIONS,
+                        "instructions": _build_realtime_instructions(current_user.username),
                         "audio": {
                             "input": {
                                 # Without this, the API never emits
                                 # conversation.item.input_audio_transcription.*
                                 # events — the model still hears the user fine,
                                 # but we'd have no text to save into chat history.
-                                "transcription": {"model": _REALTIME_TRANSCRIBE_MODEL}
+                                "transcription": {"model": _REALTIME_TRANSCRIBE_MODEL},
+                                "turn_detection": _REALTIME_TURN_DETECTION,
                             },
                             "output": {"voice": _REALTIME_DEFAULT_VOICE},
                         },

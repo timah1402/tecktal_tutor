@@ -117,6 +117,90 @@ export async function deleteNotebookRecord(
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
 }
 
+export interface SaveNotebookRecordPayload {
+  notebookIds: string[];
+  recordType: NotebookRecordType | string;
+  title: string;
+  userQuery: string;
+  output: string;
+  metadata?: Record<string, unknown>;
+  kbName?: string | null;
+}
+
+function parseNotebookSseEvents(buffer: string): Array<Record<string, unknown>> {
+  const events: Array<Record<string, unknown>> = [];
+  const chunks = buffer.split("\n\n");
+  for (let i = 0; i < chunks.length - 1; i += 1) {
+    const lines = chunks[i]
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const dataLine = lines.find((line) => line.startsWith("data:"));
+    if (!dataLine) continue;
+    try {
+      events.push(JSON.parse(dataLine.slice(5).trim()) as Record<string, unknown>);
+    } catch {
+      continue;
+    }
+  }
+  return events;
+}
+
+/**
+ * Save a record straight to one or more notebooks without the picker UI —
+ * used by callers that can't drive a modal (e.g. a voice-triggered save).
+ * Awaits the full SSE stream and resolves with the generated summary; throws
+ * on any stream-reported or transport error.
+ */
+export async function saveNotebookRecord(
+  payload: SaveNotebookRecordPayload,
+): Promise<{ summary: string }> {
+  const response = await apiFetch(
+    apiUrl("/api/v1/notebook/add_record_with_summary"),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        notebook_ids: payload.notebookIds,
+        record_type: payload.recordType,
+        title: payload.title,
+        user_query: payload.userQuery,
+        output: payload.output,
+        metadata: payload.metadata ?? {},
+        kb_name: payload.kbName ?? null,
+      }),
+    },
+  );
+  if (!response.ok || !response.body) {
+    throw new Error(`Failed to save to notebook (HTTP ${response.status}).`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalSummary = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lastSeparator = buffer.lastIndexOf("\n\n");
+    if (lastSeparator === -1) continue;
+    const consumable = buffer.slice(0, lastSeparator + 2);
+    buffer = buffer.slice(lastSeparator + 2);
+    for (const event of parseNotebookSseEvents(consumable)) {
+      const type = String(event.type || "");
+      if (type === "summary_chunk") {
+        finalSummary += String(event.content || "");
+      } else if (type === "error") {
+        throw new Error(String(event.detail || "Failed to save to notebook."));
+      } else if (type === "result") {
+        return { summary: String(event.summary || finalSummary) };
+      }
+    }
+  }
+  throw new Error("Notebook save stream ended unexpectedly.");
+}
+
 // ── Question notebook (quiz entries + categories) ─────────────────
 
 export interface NotebookAnswerImage {

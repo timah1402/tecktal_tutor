@@ -91,6 +91,20 @@ export function dispatchVoiceTranscript(text: string): void {
   );
 }
 
+// Fired by VoiceCallContext's save_quiz_to_notebook / download_quiz tool
+// handlers. The most-recently-mounted QuizViewer (there's normally exactly
+// one visible) is the only listener that acts on it — see QuizViewer's own
+// "active instance" tracking. No-op (silently ignored) when no quiz is open.
+export const QUIZ_SESSION_ACTION_EVENT = "deeptutor:quiz-session-action";
+export type QuizSessionAction = "save" | "download";
+
+export function dispatchQuizSessionAction(action: QuizSessionAction): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(QUIZ_SESSION_ACTION_EVENT, { detail: { action } }),
+  );
+}
+
 export function normalizeLanguage(
   value: string | null | undefined,
 ): AppLanguage {

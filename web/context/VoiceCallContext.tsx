@@ -26,7 +26,11 @@ import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useRealtimeVoiceCall, type RealtimeCallState } from "@/hooks/useRealtimeVoiceCall";
-import { dispatchCapabilitySelect, dispatchExpandDock } from "@/context/app-shell-storage";
+import {
+  dispatchCapabilitySelect,
+  dispatchExpandDock,
+  dispatchQuizSessionAction,
+} from "@/context/app-shell-storage";
 import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
 import { setTheme, type Theme } from "@/lib/theme";
 import { executeVoiceAction } from "@/lib/voice-api";
@@ -113,12 +117,11 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   //
   // Function-call turns → snapshot texts for switch_capability to consume.
   //
-  // Pure Q&A turns (no function call):
-  //   • If the user is already inside a session (quiz, research, solve, …)
-  //     → append both sides as written text to that session so the voice
-  //     conversation shows up identically to a typed one.
-  //   • If there is no session yet (empty home) → voice-only; never create
-  //     a session the user didn't explicitly ask for.
+  // Pure Q&A turns (no function call): always write the exchange as text,
+  // whether or not a session is already active — sendMessage auto-creates a
+  // draft session the same way typing a first message on the empty home
+  // page does, so voice questions show up in writing exactly like typed
+  // ones instead of being spoken-only.
   const handleTurnComplete = useCallback((hadFunctionCalls: boolean) => {
     const userText = pendingUserTextRef.current ?? "";
     const assistantText = pendingAssistantTextRef.current ?? "";
@@ -131,13 +134,11 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     }
     pendingExchangeForFunctionRef.current = null;
 
-    // Only record when there is already an active session and the user actually
-    // said something. Route through sendMessage (same path as typing) so the
-    // capability pipeline generates a properly formatted markdown response —
-    // storing the raw spoken assistant text produces plain prose with no
-    // markdown structure, which looks poor compared to typed responses.
-    const currentSessionId = chat?.state.sessionId ?? null;
-    if (!currentSessionId || !userText) return;
+    // Route through sendMessage (same path as typing) so the capability
+    // pipeline generates a properly formatted markdown response — storing
+    // the raw spoken assistant text produces plain prose with no markdown
+    // structure, which looks poor compared to typed responses.
+    if (!userText) return;
 
     chat?.sendMessage(userText);
   }, [chat]);
@@ -272,6 +273,12 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
           return { status: "ok" };
         case "show_less":
           dispatchExpandDock(false);
+          return { status: "ok" };
+        case "save_quiz_to_notebook":
+          dispatchQuizSessionAction("save");
+          return { status: "ok" };
+        case "download_quiz":
+          dispatchQuizSessionAction("download");
           return { status: "ok" };
         default:
           return { status: "error", message: `Unknown action: ${name}` };

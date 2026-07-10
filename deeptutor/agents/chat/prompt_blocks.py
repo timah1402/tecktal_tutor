@@ -105,18 +105,30 @@ class ChatPromptAssembler:
         if isinstance(identity, dict):
             name = str(identity.get("name") or "").strip()
         if not name:
-            return self._t("general")
-        content = self._t(
-            "general_partner",
-            default='You are a companion created by the user. The name the user gave you is "{name}".',
-        ).format(name=name)
-        description = str(identity.get("description") or "").strip()
-        if description:
-            description_line = self._t(
-                "general_partner_description",
-                default="The user's description of you: {description}",
-            ).format(description=description)
-            content = f"{content}\n{description_line}"
+            content = self._t("general")
+        else:
+            content = self._t(
+                "general_partner",
+                default='You are a companion created by the user. The name the user gave you is "{name}".',
+            ).format(name=name)
+            description = str(identity.get("description") or "").strip()
+            if description:
+                description_line = self._t(
+                    "general_partner_description",
+                    default="The user's description of you: {description}",
+                ).format(description=description)
+                content = f"{content}\n{description_line}"
+        username = str(context.metadata.get("username") or "").strip()
+        if username:
+            identity_line = self._t(
+                "user_identity",
+                default=(
+                    'The person you are talking to is logged in as "{username}". '
+                    "If they ask who they are or what their username/account is, "
+                    "answer with that name directly instead of saying you don't know."
+                ),
+            ).format(username=username)
+            content = f"{content}\n{identity_line}"
         return content
 
     def _partner_turn_policy(self, context: UnifiedContext) -> str:
