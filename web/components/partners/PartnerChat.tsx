@@ -39,6 +39,7 @@ import {
   type PartnerPendingAttachment,
 } from "@/components/partners/PartnerComposer";
 import PartnerAvatar from "@/components/partners/PartnerAvatar";
+import { useVoiceCall } from "@/context/VoiceCallContext";
 
 const AssistantResponse = dynamic(
   () => import("@/components/common/AssistantResponse"),
@@ -213,6 +214,7 @@ export default function PartnerChat({
   onMessagesChange?: (messages: ExportableMessage[]) => void;
 }) {
   const { t } = useTranslation();
+  const voiceCall = useVoiceCall();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -593,6 +595,22 @@ export default function PartnerChat({
     },
     [sessionKey, running, streaming, scrollToBottom, runClientCommand, t],
   );
+
+  // Being on a partner's chat page at all is already an explicit,
+  // unambiguous target — there's no "blank default chat" case to guard
+  // against the way the home composer has, so alwaysForward: true. Voice
+  // previously had zero wiring into this page (its own dedicated WS, wholly
+  // outside UnifiedChatContext/the home composer bridge), so a spoken task
+  // here just silently went nowhere. handleSend already no-ops while the
+  // partner isn't running/still streaming, so no extra guard needed here.
+  useEffect(() => {
+    voiceCall.registerComposerBridge({
+      hasPendingAttachments: () => false,
+      send: (text: string) => handleSend(text, []),
+      alwaysForward: true,
+    });
+    return () => voiceCall.registerComposerBridge(null);
+  }, [voiceCall, handleSend]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

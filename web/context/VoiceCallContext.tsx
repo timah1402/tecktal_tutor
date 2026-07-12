@@ -105,13 +105,23 @@ const VOICE_PAGE_ROUTES: Record<string, string> = {
   knowledge_center: "/knowledge",
 };
 
-// Registered by the home page (the one composer that owns file-upload state)
-// so voice can route a spoken question through the same send path as typing
-// — attachments included — instead of the plain chat.sendMessage(text) call,
-// which drops whatever is staged in the composer's upload tray.
+// Registered by whichever page currently owns the one active chat surface —
+// the home composer (file-upload state included) or a partner's dedicated
+// chat (see PartnerChat.tsx) — so voice can route a spoken question through
+// the same send path as typing, instead of a plain chat.sendMessage(text)
+// call that drops attachments and has no notion of a partner at all.
 export interface VoiceComposerBridge {
   hasPendingAttachments: () => boolean;
   send: (text: string, configOverride?: Record<string, unknown>) => void;
+  /**
+   * When true, forward every non-filler utterance to this bridge
+   * unconditionally, even with no session/capability/attachments yet. Set
+   * by contexts that are ALREADY an explicit, unambiguous target the
+   * moment they're mounted — e.g. a specific partner's chat page — unlike
+   * the home composer's bare default-chat state, where a stray "hello"
+   * should just get a spoken reply instead of silently opening a session.
+   */
+  alwaysForward?: boolean;
 }
 
 interface VoiceCallContextValue {
@@ -253,8 +263,20 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     // changes. Gating purely on session/attachment presence silently
     // dropped that: typing on the exact same blank composer works fine
     // (handleSend has no such guard), so voice alone was going mute here.
+    // A bridge with alwaysForward=true (a partner's chat — see PartnerChat)
+    // is the same story one level further: that page has no notion of
+    // "session" or "capability" at all (its own dedicated WS, entirely
+    // outside UnifiedChatContext), so without this check every one of
+    // those signals reads as absent and the guard would always bail.
     const currentCapability = chat?.state.activeCapability ?? "";
-    if (!currentSessionId && !hasPendingAttachments && !currentCapability) return;
+    if (
+      !bridge?.alwaysForward &&
+      !currentSessionId &&
+      !hasPendingAttachments &&
+      !currentCapability
+    ) {
+      return;
+    }
 
     // Route through the same send path as typing (the composer bridge when
     // available, so staged attachments ride along; otherwise plain
@@ -499,6 +521,13 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
         case "download_quiz":
           dispatchQuizSessionAction("download");
           return { status: "ok" };
+        case "get_memory_overview":
+          // Pure data fetch, no browser-side effect — the MCP round-trip
+          // (executeVoiceAction above) already did the real work and
+          // `result` already IS the summary (l1_total, l2_docs, backups,
+          // …); just relay it back as this turn's function output so the
+          // model can describe the real numbers instead of guessing.
+          return result;
         default:
           return { status: "error", message: `Unknown action: ${name}` };
       }

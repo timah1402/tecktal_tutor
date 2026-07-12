@@ -7,11 +7,14 @@ constraints — but as actual ``@mcp.tool()``-decorated functions on a real
 ``call_tool`` round-trip (see ``mcp_action_client.py``), not just a
 client-side switch-statement pretending to be one.
 
-Each tool only validates its argument and echoes back the resolved value —
+Most tools only validate their argument and echo back the resolved value —
 the actual browser-side effect (router navigation, switching the chat
 composer's capability, etc.) can only happen in the browser, so that part
 stays in ``web/context/VoiceCallContext.tsx``. This server is the
-authoritative validation step in that round-trip.
+authoritative validation step in that round-trip. ``get_memory_overview``
+is the one exception: a pure read-only data fetch with no browser-side
+effect at all — its result is relayed straight back to the model as the
+function's output (see that handler in VoiceCallContext.tsx).
 
 Deliberately **not** registered with ``deeptutor.services.mcp.manager``
 (the multi-server client used by chat capabilities like deep_research) —
@@ -187,6 +190,57 @@ def save_quiz_to_notebook() -> dict[str, Any]:
 def download_quiz() -> dict[str, Any]:
     """Download the quiz the user is currently taking as a Markdown file."""
     return {"status": "ok"}
+
+
+@mcp.tool()
+def get_memory_overview() -> dict[str, Any]:
+    """Fetch a live summary of the current user's Memory page.
+
+    Same data MemoryHub.tsx renders (per-surface L1 entity counts, L2/L3
+    doc entry totals, backup count/latest name) — user-scoped via the
+    memory path service's contextvar, which propagates correctly through
+    this in-process MCP round-trip since it's the same asyncio task as the
+    outer request (no real network hop, no context loss). Read-only —
+    nothing here mutates memory state.
+    """
+    from deeptutor.services.memory import SURFACES, get_memory_store, paths
+    from deeptutor.services.memory import snapshot as snap
+
+    try:
+        store = get_memory_store()
+        docs = store.overview()
+        l1_by_surface = {
+            surface: len(snap.read_snapshot(surface)) for surface in SURFACES
+        }
+        backup_dir = paths.backup_root()
+        backups = (
+            sorted(p.name for p in backup_dir.iterdir() if p.is_dir())
+            if backup_dir.exists()
+            else []
+        )
+        return {
+            "status": "ok",
+            "l1_total": sum(l1_by_surface.values()),
+            "l1_by_surface": l1_by_surface,
+            "l2_docs": [
+                {
+                    "surface": d.key,
+                    "entries": d.entry_count,
+                    "updated_at": d.updated_at,
+                }
+                for d in docs
+                if d.layer == "L2"
+            ],
+            "l3_docs": [
+                {"slot": d.key, "entries": d.entry_count, "updated_at": d.updated_at}
+                for d in docs
+                if d.layer == "L3"
+            ],
+            "backup_count": len(backups),
+            "latest_backup": backups[-1] if backups else None,
+        }
+    except Exception as exc:  # noqa: BLE001 — surface as a spoken-friendly error
+        return _error(f"Could not read memory overview: {exc}")
 
 
 _asgi_app = None

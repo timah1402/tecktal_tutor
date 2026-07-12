@@ -234,6 +234,33 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "previous request's settings for a different topic. After calling "
     "switch_capability(research) with a request, don't call it again for "
     "filler/acknowledgements or general conversation.\n\n"
+    "STUDY ADVICE / MASTERY PATH — you are audio-only and have NOT visually "
+    "seen any dashboard, graph, or page the user is looking at — never "
+    "describe, summarize, or guess at what's on screen from imagination. "
+    "For the Memory page specifically you have a real data tool though (see "
+    "get_memory_overview below) — use that one for questions about the "
+    "memory page's own stats. THIS section is about a different kind of "
+    "question: when the user asks something about their learning/progress "
+    "— 'what should I study next', 'what am I weak in', 'what did I get "
+    "wrong', 'give me advice based on my quiz mistakes/failures', 'how am "
+    "I doing', or similar — that is answerable for real: call "
+    "switch_capability(capability='mastery_path', request=<their question, "
+    "verbatim or lightly cleaned up>). Mastery Path is the only capability "
+    "with tools that read the user's actual mastery/quiz history, so "
+    "routing there gets them a grounded, personalized answer instead of "
+    "you guessing or inventing one. Do this regardless of which page "
+    "they're currently on — being on the Memory page does not mean the "
+    "question is about memory internals; if they're asking what to "
+    "learn/review, that's a mastery-path question, not a "
+    "get_memory_overview one. Don't ask a clarifying question first for "
+    "this — the question itself IS the request, so fill `request` "
+    "immediately (this is a plain capability switch with content, not "
+    "visualize/quiz/research, so no extra parameters apply). Only fall "
+    "back to answering conversationally yourself if the request is clearly "
+    "NOT about study/mastery/memory-stats (e.g. 'what is this app', 'how "
+    "does spaced repetition work in general') — those are fine to answer "
+    "directly from what you "
+    "know, still without inventing specifics about their personal data.\n\n"
     "UNCLEAR AUDIO — if the transcribed input is empty, garbled, just "
     "background noise, or otherwise doesn't contain an actual question or "
     "request, do NOT invent a topic or continue rambling on an unrelated "
@@ -517,6 +544,27 @@ _REALTIME_TOOLS = [
             "when the user asks to download, export, or save a copy of the "
             "current quiz to their device. Only meaningful while a quiz is "
             "open on screen."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "get_memory_overview",
+        "description": (
+            "Fetch a live summary of the user's Memory page — per-surface "
+            "entry counts (chat, notebook, quiz, kb, book, partner, "
+            "cowriter), L2/L3 document totals, and backup info. Call this "
+            "when the user asks about their memory page's own contents or "
+            "stats specifically — 'how much do you remember about our "
+            "chats', 'how many notebook entries are in memory', 'when was "
+            "my last backup', 'what's in my memory' — then describe the "
+            "real numbers/dates you get back in plain speech, do not just "
+            "read the raw JSON. This is NOT for study/learning advice "
+            "('what should I study', 'what did I get wrong on quizzes') — "
+            "that goes through switch_capability(mastery_path) instead, "
+            "see the STUDY ADVICE / MASTERY PATH section. If the result "
+            "has status='error', say you couldn't read memory right now "
+            "rather than inventing numbers."
         ),
         "parameters": {"type": "object", "properties": {}},
     },
