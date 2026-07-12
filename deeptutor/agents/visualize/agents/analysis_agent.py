@@ -100,4 +100,8 @@ class AnalysisAgent(BaseAgent):
         ):
             # Defensive: if the LLM ignored the constraint, force a safe default.
             result.render_type = "svg"  # type: ignore[assignment]
+        elif render_mode == "auto" and result.render_type == "manim_image":
+            # Storyboard is disabled — auto-routing must never land on it even
+            # if the LLM ignores the prompt constraint.
+            result.render_type = "manim_video"  # type: ignore[assignment]
         return result

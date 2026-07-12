@@ -37,7 +37,7 @@ export default memo(function VisualizeConfigPanel({
 
   // Manim modes need extra knobs (render quality, style hint) — match what
   // the legacy Animator panel exposed so users don't lose granularity when
-  // they pick "Animation" / "Storyboard" here.
+  // they pick "Animation" here.
   const isManim =
     value.render_mode === "manim_video" || value.render_mode === "manim_image";
 
@@ -60,7 +60,7 @@ export default memo(function VisualizeConfigPanel({
           <option value="mermaid">{t("Mermaid")}</option>
           <option value="html">{t("HTML")}</option>
           <option value="manim_video">{t("Animation")}</option>
-          <option value="manim_image">{t("Storyboard")}</option>
+          {/* Storyboard (manim_image) disabled — not selectable from the UI. */}
         </select>
       </Field>
 

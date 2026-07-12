@@ -49,13 +49,18 @@ _REALTIME_CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secret
 # room close to the mic and readily fires on ambient noise (typing, other
 # voices, background TV) picked up by laptop/phone mics in real environments.
 # Raising the threshold and padding trades a little responsiveness for far
-# fewer false "user is speaking" triggers. Tune here if users still report
-# the call reacting to background noise, or feeling sluggish to respond.
+# fewer false "user is speaking" triggers. Bumped from 0.7 -> 0.8 and
+# silence_duration_ms 600 -> 700 after reports of the assistant responding
+# to nothing/noise with unrelated rambling — a false speech_started still
+# gets transcribed as *something* (even if it's just noise), and the model
+# then has to say something in response to that "something". Tune further
+# here if users still report the call reacting to background noise, or
+# feeling sluggish to respond.
 _REALTIME_TURN_DETECTION = {
     "type": "server_vad",
-    "threshold": 0.7,
+    "threshold": 0.8,
     "prefix_padding_ms": 300,
-    "silence_duration_ms": 600,
+    "silence_duration_ms": 700,
 }
 
 # Voice-driven in-app actions: navigating between pages, switching
@@ -79,6 +84,15 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "{user_identity}"
     "Your primary job is to help users control the app by voice and to answer "
     "educational questions concisely.\n\n"
+    "FIRST, ALWAYS CLASSIFY WHAT YOU HEARD before deciding what to do: is this "
+    "a greeting/acknowledgement/small talk with no actionable content ('hi', "
+    "'thanks', 'ok', 'how are you', a laugh, silence/noise), a genuine "
+    "question you can just answer out loud, or an explicit request to do "
+    "something (navigate, switch mode, generate, save, download)? Only the "
+    "third category ever calls a function. Never treat the mere fact that "
+    "you heard something as a reason to act — most turns in a conversation "
+    "are not requests, and defaulting to 'do something' on every turn is "
+    "exactly the failure mode to avoid.\n\n"
     "CRITICAL RULE — tool use: whenever the user asks to navigate, switch modes, "
     "start a new chat, open/close history, change the theme, or expand/collapse "
     "the menu, you MUST call the matching function. Never describe the action "
@@ -96,7 +110,14 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "visualize mode', 'let's do a quiz'), call switch_capability with "
     "`request` empty/omitted so it just changes the mode and waits for the "
     "user to say what they want. For visualize specifically, see the "
-    "VISUALIZING section below before filling in `request`.\n"
+    "VISUALIZING section below before filling in `request`. NEVER call "
+    "switch_capability for a short acknowledgement or filler utterance — "
+    "'thanks', 'thank you', 'ok', 'okay', 'alright', 'cool', 'got it', "
+    "'sounds good', 'nice', 'sure', a laugh, or similar — these carry no new "
+    "request even if a capability (e.g. visualize) is already active; just "
+    "reply naturally with speech, no function call, no repeated generation. "
+    "Only call switch_capability again mid-session if the user clearly "
+    "describes a genuinely new/different thing to generate.\n"
     "• start_new_chat — clear the current conversation and open a fresh one.\n"
     "• open_history / close_history — show or hide the past-conversations panel.\n"
     "• set_theme — change the visual theme: light, dark, glass, snow, brand.\n"
@@ -134,7 +155,27 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "match what's actually generated. Just acknowledge briefly, e.g. "
     "\"Generating that now — check the chat.\" Keep it to one short "
     "sentence, then stop. If `request` was left empty (bare mode switch), "
-    "just confirm the mode change and ask what they'd like visualized.\n\n"
+    "just confirm the mode change and ask what they'd like visualized. "
+    "After you've already called switch_capability(visualize) with a "
+    "request, the pipeline is already running — do not call it again for "
+    "whatever the user says next unless it is unmistakably a new, distinct "
+    "visualization request. Replies like 'thanks', 'alright', 'ok', or "
+    "general conversation are just conversation; answer them normally "
+    "without touching switch_capability or restarting generation. THIS "
+    "APPLIES EVEN WHEN ALREADY IN VISUALIZE MODE FROM AN EARLIER REQUEST: "
+    "the format question is per-request, not per-session — a new distinct "
+    "topic ('now visualize X' / 'also show me Y' / any different content) "
+    "still needs its own format answered first, exactly like the very first "
+    "request did. Never reuse or assume the previous request's format for a "
+    "different topic, and never call switch_capability for the new topic "
+    "until you've asked and the user has answered (or already stated the "
+    "format themselves, or said they don't care).\n\n"
+    "UNCLEAR AUDIO — if the transcribed input is empty, garbled, just "
+    "background noise, or otherwise doesn't contain an actual question or "
+    "request, do NOT invent a topic or continue rambling on an unrelated "
+    "subject. Briefly ask the user to repeat themselves (e.g. \"Sorry, I "
+    "didn't catch that — could you say it again?\") and stop; never call a "
+    "function based on a guess about what noisy audio might have meant.\n\n"
     "UPLOADED FILES — you are audio-only and never receive the bytes of any "
     "file the user has attached in the app; solving it is handled elsewhere "
     "and appears in the chat. When the user asks you to solve, read, "
@@ -224,7 +265,7 @@ _REALTIME_TOOLS = [
                 },
                 "render_mode": {
                     "type": "string",
-                    "enum": ["auto", "svg", "chartjs", "mermaid", "html", "manim_video", "manim_image"],
+                    "enum": ["auto", "svg", "chartjs", "mermaid", "html", "manim_video"],
                     "description": (
                         "Only used when capability='visualize' and `request` is "
                         "filled in — the visual format the user wants. Map their "
@@ -233,8 +274,7 @@ _REALTIME_TOOLS = [
                         "'mermaid'; a precise vector drawing/illustration/geometry "
                         "figure -> 'svg'; an interactive page or simulation -> "
                         "'html'; a narrated video/motion animation -> "
-                        "'manim_video'; a still storyboard of an animation -> "
-                        "'manim_image'. Use 'auto' only if the user explicitly "
+                        "'manim_video'. Use 'auto' only if the user explicitly "
                         "says they don't care or want you to choose — otherwise "
                         "ask them first (see VISUALIZING instructions) rather "
                         "than guessing."

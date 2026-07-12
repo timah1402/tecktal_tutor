@@ -1417,7 +1417,35 @@ export default function ChatPage() {
       // mode preference) that bypasses the composer's own config panel —
       // merge it on top so it wins over the panel's (possibly stale/default)
       // values without requiring the user to have opened the panel at all.
-      if (configOverride) config = { ...(config ?? {}), ...configOverride };
+      if (configOverride) {
+        config = { ...(config ?? {}), ...configOverride };
+        // This path skips the Activity panel's Confirm button entirely, so
+        // without this the panel is left stuck showing "Required" / "Confirm
+        // settings to enable sending" (and, for visualize, a stale Render
+        // Mode picker) even while the request it's nagging about is already
+        // generating — confusing since it looks like two contradictory
+        // things happening on the same request. Sync the actual values used
+        // into local state and mark the gate satisfied so the panel reflects
+        // reality instead of re-asking for something that already happened.
+        if (isVisualizeMode) {
+          setVisualizeConfig((prev) => ({
+            ...prev,
+            render_mode:
+              typeof configOverride.render_mode === "string"
+                ? (configOverride.render_mode as VisualizeFormConfig["render_mode"])
+                : prev.render_mode,
+            quality:
+              typeof configOverride.quality === "string"
+                ? (configOverride.quality as VisualizeFormConfig["quality"])
+                : prev.quality,
+            style_hint:
+              typeof configOverride.style_hint === "string"
+                ? configOverride.style_hint
+                : prev.style_hint,
+          }));
+        }
+        setCapabilityConfigConfirmed(true);
+      }
       // When a connected agent is selected, carry the per-turn consult budget
       // (how many times DeepTutor may ask it) so the subagent capability uses it.
       if (selectedAgent && subagentBudget) {

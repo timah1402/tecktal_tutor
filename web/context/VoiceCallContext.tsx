@@ -48,6 +48,28 @@ const VOICE_CAPABILITY_VALUES: Record<string, string> = {
   mastery_path: "mastery_path",
 };
 
+// Purely conversational filler that carries no new request. Forwarding it
+// through the active capability's bridge (handleTurnComplete below) would
+// otherwise be read as fresh input — harmless for plain chat, but for a
+// generative capability like visualize it silently kicks off a nonsense
+// regeneration from words like "Thank you." after a chart was just produced.
+const FILLER_UTTERANCE_RE =
+  /^(?:thanks?(?: you)?|thank you(?: so)?(?: much)?|ok(?:ay)?|alright|cool|got it|sounds good|nice|sure|great|awesome|perfect|good|yep|yeah|no problem|you'?re welcome|welcome)[.!,\s]*$/i;
+
+// Capabilities that have no conversational fallback — any text handed to
+// their pipeline is treated as "generate a new artifact from this", not
+// "reply to this". For these, mechanically forwarding every spoken turn
+// (handleTurnComplete's default behavior for in-session capabilities like
+// quiz/research/solve) means even a greeting or an off-topic remark fires a
+// fresh generation. Real triggering for these is left entirely to the
+// model's own switch_capability tool call, which reasons about intent
+// instead of relaying transcribed text verbatim.
+const GENERATION_ONLY_CAPABILITIES: ReadonlySet<string> = new Set(["visualize"]);
+
+function isFillerUtterance(text: string): boolean {
+  return FILLER_UTTERANCE_RE.test(text.trim());
+}
+
 const VOICE_THEME_VALUES: ReadonlySet<string> = new Set([
   "light",
   "dark",
@@ -151,6 +173,16 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   //   • Otherwise (empty home, nothing attached) → voice-only; never create
   //     a session the user didn't explicitly ask for. A stray "hello" on
   //     the home page should just get a spoken reply, not pop open a chat.
+  //   • Pure acknowledgements ("thanks", "ok", "alright", ...) are never
+  //     forwarded, in-session or not — they're not a new request and would
+  //     otherwise re-trigger the active capability (see FILLER_UTTERANCE_RE).
+  //   • Capabilities with no "just reply conversationally" mode (visualize:
+  //     any text sent to it attempts to generate a chart, full stop) are
+  //     excluded from this mechanical forward entirely — see
+  //     GENERATION_ONLY_CAPABILITIES. Their real trigger is the model's own
+  //     switch_capability tool call, which actually reasons about whether
+  //     the user gave a genuine new request (see voice.py's VISUALIZING
+  //     instructions) instead of relaying whatever was said verbatim.
   const handleTurnComplete = useCallback((hadFunctionCalls: boolean) => {
     const userText = pendingUserTextRef.current ?? "";
     const assistantText = pendingAssistantTextRef.current ?? "";
@@ -162,7 +194,10 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     pendingExchangeForFunctionRef.current = null;
-    if (!userText) return;
+    if (!userText || isFillerUtterance(userText)) return;
+    if (GENERATION_ONLY_CAPABILITIES.has(chat?.state.activeCapability ?? "")) {
+      return;
+    }
 
     const bridge = composerBridgeRef.current;
     const hasPendingAttachments = bridge?.hasPendingAttachments() ?? false;

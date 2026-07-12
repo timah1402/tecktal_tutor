@@ -59,7 +59,7 @@ _PAGES = (
 )
 _CAPABILITIES = ("chat", "quiz", "research", "solve", "visualize", "mastery_path")
 _THEMES = ("light", "dark", "glass", "snow", "brand")
-_RENDER_MODES = ("auto", "svg", "chartjs", "mermaid", "html", "manim_video", "manim_image")
+_RENDER_MODES = ("auto", "svg", "chartjs", "mermaid", "html", "manim_video")
 
 
 def _error(message: str) -> dict[str, Any]:
