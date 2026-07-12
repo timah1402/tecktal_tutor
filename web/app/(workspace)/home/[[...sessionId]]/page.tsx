@@ -84,6 +84,7 @@ import {
   resolveCapabilityPlaygroundConfig,
   type CapabilityPlaygroundConfigMap,
 } from "@/lib/playground-config";
+import type { NormalizedQuizQuestionType } from "@/lib/quiz-question-type";
 import {
   DEFAULT_QUIZ_CONFIG,
   buildQuizWSConfig,
@@ -311,6 +312,40 @@ interface PendingAttachment {
 
 function getCapability(value: string | null): CapabilityDef {
   return CAPABILITIES.find((c) => c.value === (value || "")) ?? CAPABILITIES[0];
+}
+
+/**
+ * Merge a voice-triggered configOverride (see VoiceCallContext's
+ * switch_capability handling) on top of the panel's own quiz config.
+ * Shared by handleSend (to build the actual WS payload) and the post-send
+ * sync into local state, so the two never drift out of agreement on which
+ * fields a given override touches.
+ */
+function mergeQuizConfigOverride(
+  base: DeepQuestionFormConfig,
+  override: Record<string, unknown> | undefined,
+): DeepQuestionFormConfig {
+  if (!override) return base;
+  return {
+    ...base,
+    mode:
+      typeof override.mode === "string"
+        ? (override.mode as DeepQuestionFormConfig["mode"])
+        : base.mode,
+    num_questions:
+      typeof override.num_questions === "number"
+        ? override.num_questions
+        : base.num_questions,
+    max_questions:
+      typeof override.max_questions === "number"
+        ? override.max_questions
+        : base.max_questions,
+    difficulty:
+      typeof override.difficulty === "string" ? override.difficulty : base.difficulty,
+    question_types: Array.isArray(override.question_types)
+      ? (override.question_types as NormalizedQuizQuestionType[])
+      : base.question_types,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1392,8 +1427,14 @@ export default function ChatPage() {
       let config: Record<string, unknown> | undefined;
 
       if (isQuizMode) {
-        config = buildQuizWSConfig(quizConfig);
-        if (quizConfig.mode === "mimic" && quizPdf) {
+        // A voice-triggered configOverride can name a different mode/count/
+        // types than the panel's own local state (e.g. the user never
+        // opened the panel at all) — honor it here so both the WS payload
+        // and the mimic-paper attachment below reflect what was actually
+        // requested, not a stale/default panel selection.
+        const effectiveQuizConfig = mergeQuizConfigOverride(quizConfig, configOverride);
+        config = buildQuizWSConfig(effectiveQuizConfig);
+        if (effectiveQuizConfig.mode === "mimic" && quizPdf) {
           const b64 = extractBase64FromDataUrl(
             await readFileAsDataUrl(quizPdf),
           );
@@ -1443,6 +1484,9 @@ export default function ChatPage() {
                 ? configOverride.style_hint
                 : prev.style_hint,
           }));
+        }
+        if (isQuizMode) {
+          setQuizConfig((prev) => mergeQuizConfigOverride(prev, configOverride));
         }
         setCapabilityConfigConfirmed(true);
       }

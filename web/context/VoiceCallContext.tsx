@@ -35,6 +35,10 @@ import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
 import { setTheme, type Theme } from "@/lib/theme";
 import { executeVoiceAction } from "@/lib/voice-api";
 import { recordRealtimeExchange } from "@/lib/session-api";
+import {
+  QUIZ_QUESTION_TYPES,
+  type NormalizedQuizQuestionType,
+} from "@/lib/quiz-question-type";
 
 // Maps the voice-facing capability names declared in voice.py's session
 // config to this app's internal capability values (see QuickActionsPanel's
@@ -64,7 +68,10 @@ const FILLER_UTTERANCE_RE =
 // fresh generation. Real triggering for these is left entirely to the
 // model's own switch_capability tool call, which reasons about intent
 // instead of relaying transcribed text verbatim.
-const GENERATION_ONLY_CAPABILITIES: ReadonlySet<string> = new Set(["visualize"]);
+const GENERATION_ONLY_CAPABILITIES: ReadonlySet<string> = new Set([
+  "visualize",
+  "deep_question",
+]);
 
 function isFillerUtterance(text: string): boolean {
   return FILLER_UTTERANCE_RE.test(text.trim());
@@ -165,24 +172,25 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   // Function-call turns → snapshot texts for switch_capability to consume.
   //
   // Pure Q&A turns (no function call):
-  //   • If the user is already inside a session (quiz, research, solve, …),
-  //     or has a file staged in the composer's upload tray (e.g. "solve
-  //     what's inside the file" right after uploading it) → send it, so it
-  //     lands in writing and — when a file is attached — actually reaches
-  //     the model as an attachment instead of being silently dropped.
+  //   • If the user is already inside a session (research, solve, …), or
+  //     has a file staged in the composer's upload tray (e.g. "solve what's
+  //     inside the file" right after uploading it) → send it, so it lands in
+  //     writing and — when a file is attached — actually reaches the model
+  //     as an attachment instead of being silently dropped.
   //   • Otherwise (empty home, nothing attached) → voice-only; never create
   //     a session the user didn't explicitly ask for. A stray "hello" on
   //     the home page should just get a spoken reply, not pop open a chat.
   //   • Pure acknowledgements ("thanks", "ok", "alright", ...) are never
   //     forwarded, in-session or not — they're not a new request and would
   //     otherwise re-trigger the active capability (see FILLER_UTTERANCE_RE).
-  //   • Capabilities with no "just reply conversationally" mode (visualize:
-  //     any text sent to it attempts to generate a chart, full stop) are
-  //     excluded from this mechanical forward entirely — see
+  //   • Capabilities with no "just reply conversationally" mode (visualize,
+  //     quiz: any text sent to them attempts to generate a new artifact,
+  //     full stop) are excluded from this mechanical forward entirely — see
   //     GENERATION_ONLY_CAPABILITIES. Their real trigger is the model's own
   //     switch_capability tool call, which actually reasons about whether
-  //     the user gave a genuine new request (see voice.py's VISUALIZING
-  //     instructions) instead of relaying whatever was said verbatim.
+  //     the user gave a genuine new request (see voice.py's VISUALIZING /
+  //     QUIZZING instructions) instead of relaying whatever was said
+  //     verbatim.
   const handleTurnComplete = useCallback((hadFunctionCalls: boolean) => {
     const userText = pendingUserTextRef.current ?? "";
     const assistantText = pendingAssistantTextRef.current ?? "";
@@ -311,8 +319,43 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
             return { status: "ok" };
           }
 
-          // Other capabilities (quiz, research, solve, mastery_path) aren't
-          // wired to the real generation pipeline via voice yet — record the
+          // Quiz is generative too: `quiz_mode` carries whichever kind the
+          // model asked the user to choose (see QUIZZING instructions in
+          // voice.py) — 'custom' generates fresh questions on `request` (the
+          // topic), 'mimic' reuses a paper the user already uploaded through
+          // the panel's own upload control (voice never sees file bytes, so
+          // it can only ask the user to confirm they've uploaded one — see
+          // handleSend's isQuizMode branch for how the actual attachment
+          // rides along once mode='mimic' is set here). `num_questions`
+          // applies to both modes (see mergeQuizConfigOverride in page.tsx,
+          // which routes it to num_questions for custom / max_questions for
+          // mimic); difficulty/question_types are custom-only.
+          if (value === "deep_question") {
+            const quizMode = String(args.quiz_mode || "custom") === "mimic" ? "mimic" : "custom";
+            const config: Record<string, unknown> = { mode: quizMode };
+            const numQuestions = Number(args.num_questions);
+            const hasNumQuestions = Number.isFinite(numQuestions) && numQuestions > 0;
+            if (quizMode === "custom") {
+              if (hasNumQuestions) config.num_questions = Math.round(numQuestions);
+              if (args.difficulty) config.difficulty = String(args.difficulty);
+              if (Array.isArray(args.question_types) && args.question_types.length > 0) {
+                config.question_types = args.question_types
+                  .filter((t): t is string => typeof t === "string")
+                  .filter((t) => QUIZ_QUESTION_TYPES.includes(t as NormalizedQuizQuestionType));
+              }
+            } else if (hasNumQuestions) {
+              config.max_questions = Math.round(numQuestions);
+            }
+            if (composerBridgeRef.current) {
+              composerBridgeRef.current.send(explicitRequest, config);
+            } else {
+              pendingBridgeSendRef.current = { text: explicitRequest, config };
+            }
+            return { status: "ok" };
+          }
+
+          // Other capabilities (research, solve, mastery_path) aren't wired
+          // to the real generation pipeline via voice yet — record the
           // spoken request as text in a new session so it's at least visible,
           // rather than silently dropping it. Using `null` as sessionId
           // always creates a fresh session separate from whatever the home

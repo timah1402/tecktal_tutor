@@ -110,7 +110,8 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "visualize mode', 'let's do a quiz'), call switch_capability with "
     "`request` empty/omitted so it just changes the mode and waits for the "
     "user to say what they want. For visualize specifically, see the "
-    "VISUALIZING section below before filling in `request`. NEVER call "
+    "VISUALIZING section below before filling in `request`; for quiz, see "
+    "QUIZZING below. NEVER call "
     "switch_capability for a short acknowledgement or filler utterance — "
     "'thanks', 'thank you', 'ok', 'okay', 'alright', 'cool', 'got it', "
     "'sounds good', 'nice', 'sure', a laugh, or similar — these carry no new "
@@ -170,6 +171,38 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "different topic, and never call switch_capability for the new topic "
     "until you've asked and the user has answered (or already stated the "
     "format themselves, or said they don't care).\n\n"
+    "QUIZZING — you are audio-only and never write the quiz questions "
+    "yourself. When the user asks for a quiz and does NOT already say which "
+    "kind, ask ONE short follow-up first — e.g. \"Would you like a quiz on "
+    "a topic, or should I mimic the format of an exam paper you've "
+    "uploaded?\" — and wait for their answer before calling "
+    "switch_capability. Skip the question only if they already told you "
+    "which kind. Once you know the kind:\n"
+    "  - TOPIC quiz (quiz_mode='custom'): also ask how many questions, what "
+    "difficulty, and what question type(s) if not already said — one short "
+    "follow-up covering all three, e.g. \"How many questions, what "
+    "difficulty — easy, medium, hard, or your choice — and any preferred "
+    "question type, like multiple choice, short answer, or essay?\" — "
+    "accepting 'you choose' / 'auto' / 'any type' as valid answers (then "
+    "leave `question_types` empty/omitted). Then call switch_capability "
+    "with `request` (the topic), `quiz_mode='custom'`, `num_questions`, "
+    "`difficulty`, and `question_types` filled in.\n"
+    "  - MIMIC quiz (quiz_mode='mimic'): the user must already have "
+    "uploaded the exam paper through the app's own upload control — you "
+    "cannot receive file bytes yourself. If they haven't said they've "
+    "uploaded one, ask them to upload it first and wait; do NOT call "
+    "switch_capability until they confirm it's uploaded. Also ask how many "
+    "questions to draw from it if not already said (accepting 'you choose' "
+    "for a default). Once confirmed, call switch_capability with `request` "
+    "describing what to mimic, `quiz_mode='mimic'`, and `num_questions` "
+    "filled in (`difficulty`/`question_types` aren't used in mimic mode — "
+    "the paper's own format determines those).\n"
+    "Exactly like visualize, this is per-request, not per-session: a new, "
+    "distinct quiz request (a different topic, or switching between topic "
+    "and mimic) needs its own kind and parameters asked again — never reuse "
+    "a previous quiz's settings for a different request. After calling "
+    "switch_capability(quiz) with a request, don't call it again for "
+    "filler/acknowledgements or general conversation, same as visualize.\n\n"
     "UNCLEAR AUDIO — if the transcribed input is empty, garbled, just "
     "background noise, or otherwise doesn't contain an actual question or "
     "request, do NOT invent a topic or continue rambling on an unrelated "
@@ -278,6 +311,63 @@ _REALTIME_TOOLS = [
                         "says they don't care or want you to choose — otherwise "
                         "ask them first (see VISUALIZING instructions) rather "
                         "than guessing."
+                    ),
+                },
+                "quiz_mode": {
+                    "type": "string",
+                    "enum": ["custom", "mimic"],
+                    "description": (
+                        "Only used when capability='quiz' and `request` is filled "
+                        "in — 'custom' generates fresh questions on a topic; "
+                        "'mimic' reproduces the format/style of an exam paper the "
+                        "user has already uploaded in the app. Ask the user which "
+                        "they want first (see QUIZZING instructions) unless they "
+                        "already said."
+                    ),
+                },
+                "num_questions": {
+                    "type": "integer",
+                    "description": (
+                        "Only used when capability='quiz' — how many questions "
+                        "to generate. Applies to BOTH quiz_mode values: for "
+                        "'custom' it's how many fresh questions to write; for "
+                        "'mimic' it's how many questions to draw from the "
+                        "uploaded paper. Ask the user in both cases, or omit "
+                        "this to let the app pick a reasonable default if they "
+                        "say they don't care."
+                    ),
+                },
+                "difficulty": {
+                    "type": "string",
+                    "enum": ["auto", "easy", "medium", "hard"],
+                    "description": (
+                        "Only used when capability='quiz' and quiz_mode='custom' "
+                        "— the difficulty level. Use 'auto' if the user doesn't "
+                        "specify or says they don't care."
+                    ),
+                },
+                "question_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "choice",
+                            "concept",
+                            "fill_in_blank",
+                            "short_answer",
+                            "written",
+                            "coding",
+                        ],
+                    },
+                    "description": (
+                        "Only used when capability='quiz' and quiz_mode='custom' "
+                        "— which question type(s) the user wants. Map their words "
+                        "to: multiple choice -> 'choice'; true/false -> 'concept'; "
+                        "fill in the blank -> 'fill_in_blank'; short answer -> "
+                        "'short_answer'; essay/open-ended -> 'written'; coding -> "
+                        "'coding'. Ask the user if not already said, unless they "
+                        "say any type / they don't care — then omit this entirely "
+                        "so the app picks freely. Multiple types may be given."
                     ),
                 },
             },
