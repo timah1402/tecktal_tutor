@@ -62,15 +62,20 @@ const FILLER_UTTERANCE_RE =
 
 // Capabilities that have no conversational fallback — any text handed to
 // their pipeline is treated as "generate a new artifact from this", not
-// "reply to this". For these, mechanically forwarding every spoken turn
-// (handleTurnComplete's default behavior for in-session capabilities like
-// quiz/research/solve) means even a greeting or an off-topic remark fires a
-// fresh generation. Real triggering for these is left entirely to the
-// model's own switch_capability tool call, which reasons about intent
-// instead of relaying transcribed text verbatim.
+// "reply to this" (research/quiz additionally require config fields with
+// no default, so an un-configured mechanical forward doesn't just misfire,
+// it fails validation and gets silently dropped). For these, mechanically
+// forwarding every spoken turn (handleTurnComplete's default behavior for
+// in-session capabilities like solve) means even a greeting or an
+// off-topic remark either fires a bogus generation or vanishes with no
+// written trace. Real triggering for these is left entirely to the
+// model's own switch_capability tool call, which reasons about intent (and
+// asks for the required parameters) instead of relaying transcribed text
+// verbatim.
 const GENERATION_ONLY_CAPABILITIES: ReadonlySet<string> = new Set([
   "visualize",
   "deep_question",
+  "deep_research",
 ]);
 
 function isFillerUtterance(text: string): boolean {
@@ -146,6 +151,31 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // switch_capability fires a capability switch (flushSync'd, see below)
+  // immediately followed by a send for the same request. handleSend's
+  // isVisualizeMode/isQuizMode/isResearchMode flags are recomputed from the
+  // capability, so its useCallback identity changes on that switch, and the
+  // effect that re-registers the composer bridge with the *new* handleSend
+  // only runs once React's normal (non-flushSync) effect scheduling gets to
+  // it — reading composerBridgeRef.current synchronously in the same tick
+  // risks grabbing a bridge still bound to the *previous* capability's
+  // handleSend. setTimeout(0) defers past that scheduling point (a plain
+  // microtask isn't reliably late enough — React's passive-effect flush is
+  // itself scheduled as a task, not a microtask) so every branch below
+  // consistently sees the freshly re-registered bridge.
+  const sendViaBridge = useCallback(
+    (text: string, config?: Record<string, unknown>) => {
+      setTimeout(() => {
+        if (composerBridgeRef.current) {
+          composerBridgeRef.current.send(text, config);
+        } else {
+          pendingBridgeSendRef.current = { text, config };
+        }
+      }, 0);
+    },
+    [],
+  );
+
   // Pair a finished user utterance with the assistant's reply, accumulated
   // across the turn's events. Both refs (not state) — plumbing between
   // event callbacks, never triggers a re-render.
@@ -172,24 +202,30 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   // Function-call turns → snapshot texts for switch_capability to consume.
   //
   // Pure Q&A turns (no function call):
-  //   • If the user is already inside a session (research, solve, …), or
-  //     has a file staged in the composer's upload tray (e.g. "solve what's
-  //     inside the file" right after uploading it) → send it, so it lands in
-  //     writing and — when a file is attached — actually reaches the model
-  //     as an attachment instead of being silently dropped.
-  //   • Otherwise (empty home, nothing attached) → voice-only; never create
-  //     a session the user didn't explicitly ask for. A stray "hello" on
-  //     the home page should just get a spoken reply, not pop open a chat.
+  //   • If the user is already inside a session (solve, plain chat, …), has
+  //     a file staged in the composer's upload tray (e.g. "solve what's
+  //     inside the file" right after uploading it), or has a real
+  //     (non-default) capability selected — even on a brand-new draft with
+  //     no session yet, e.g. they navigated to ?capability=mastery_path and
+  //     just started talking with no mode-switching function call in
+  //     between — send it, so it lands in writing and — when a file is
+  //     attached — actually reaches the model as an attachment instead of
+  //     being silently dropped.
+  //   • Otherwise (truly blank home, plain chat, nothing attached) →
+  //     voice-only; never create a session the user didn't explicitly ask
+  //     for. A stray "hello" on the bare home page should just get a
+  //     spoken reply, not pop open a chat.
   //   • Pure acknowledgements ("thanks", "ok", "alright", ...) are never
   //     forwarded, in-session or not — they're not a new request and would
   //     otherwise re-trigger the active capability (see FILLER_UTTERANCE_RE).
   //   • Capabilities with no "just reply conversationally" mode (visualize,
-  //     quiz: any text sent to them attempts to generate a new artifact,
-  //     full stop) are excluded from this mechanical forward entirely — see
-  //     GENERATION_ONLY_CAPABILITIES. Their real trigger is the model's own
-  //     switch_capability tool call, which actually reasons about whether
-  //     the user gave a genuine new request (see voice.py's VISUALIZING /
-  //     QUIZZING instructions) instead of relaying whatever was said
+  //     quiz, research: any text sent to them attempts to generate a new
+  //     artifact, full stop) are excluded from this mechanical forward
+  //     entirely — see GENERATION_ONLY_CAPABILITIES. Their real trigger is
+  //     the model's own switch_capability tool call, which actually reasons
+  //     about whether the user gave a genuine new request AND asks for the
+  //     required parameters first (see voice.py's VISUALIZING / QUIZZING /
+  //     RESEARCHING instructions) instead of relaying whatever was said
   //     verbatim.
   const handleTurnComplete = useCallback((hadFunctionCalls: boolean) => {
     const userText = pendingUserTextRef.current ?? "";
@@ -210,7 +246,15 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     const bridge = composerBridgeRef.current;
     const hasPendingAttachments = bridge?.hasPendingAttachments() ?? false;
     const currentSessionId = chat?.state.sessionId ?? null;
-    if (!currentSessionId && !hasPendingAttachments) return;
+    // A real (non-default-chat) capability being active is itself an
+    // explicit ask, even on a brand-new draft with no session yet — e.g.
+    // the user navigates to ?capability=mastery_path and then just starts
+    // talking, with no function call in between since the mode never
+    // changes. Gating purely on session/attachment presence silently
+    // dropped that: typing on the exact same blank composer works fine
+    // (handleSend has no such guard), so voice alone was going mute here.
+    const currentCapability = chat?.state.activeCapability ?? "";
+    if (!currentSessionId && !hasPendingAttachments && !currentCapability) return;
 
     // Route through the same send path as typing (the composer bridge when
     // available, so staged attachments ride along; otherwise plain
@@ -266,8 +310,10 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
             pendingExchangeForFunctionRef.current = null;
             return { status: "error", message: `Unknown capability: ${args.capability}` };
           }
-          // Consume (and clear) the snapshot so no other handler records it.
-          const exchange = pendingExchangeForFunctionRef.current;
+          // Clear the snapshot so no other handler records it — no branch
+          // below needs the pre-function-call exchange text anymore, now
+          // that every capability routes a real request through the send
+          // pipeline instead of writing a fabricated transcript record.
           pendingExchangeForFunctionRef.current = null;
           // Model-supplied, not derived from the raw transcript: the model
           // only fills this in when the user actually described concrete
@@ -311,11 +357,7 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
           if (value === "visualize") {
             const renderMode = String(args.render_mode || "auto");
             const config = { render_mode: renderMode, quality: "medium", style_hint: "" };
-            if (composerBridgeRef.current) {
-              composerBridgeRef.current.send(explicitRequest, config);
-            } else {
-              pendingBridgeSendRef.current = { text: explicitRequest, config };
-            }
+            sendViaBridge(explicitRequest, config);
             return { status: "ok" };
           }
 
@@ -346,33 +388,59 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
             } else if (hasNumQuestions) {
               config.max_questions = Math.round(numQuestions);
             }
-            if (composerBridgeRef.current) {
-              composerBridgeRef.current.send(explicitRequest, config);
-            } else {
-              pendingBridgeSendRef.current = { text: explicitRequest, config };
-            }
+            sendViaBridge(explicitRequest, config);
             return { status: "ok" };
           }
 
-          // Other capabilities (research, solve, mastery_path) aren't wired
-          // to the real generation pipeline via voice yet — record the
-          // spoken request as text in a new session so it's at least visible,
-          // rather than silently dropping it. Using `null` as sessionId
-          // always creates a fresh session separate from whatever the home
-          // screen was showing — voice capability switches land in their
-          // own chat.
-          const assistantText = exchange?.assistantText || `Switching to ${String(args.capability || value)}.`;
-          try {
-            const { sessionId: newId } = await recordRealtimeExchange(
-              null,
-              explicitRequest,
-              assistantText,
-              value || null,
-            );
-            router.push(`/home/${newId}`);
-          } catch {
-            // Recording failed — capability animation already happened; no crash
+          // Research is generative too, and unlike quiz/visualize its two
+          // required fields (mode, depth) have NO default — the panel's
+          // local state starts blank. Without supplying both here,
+          // handleSend's validation gate silently drops the request (see
+          // mergeResearchConfigOverride in page.tsx): nothing gets written,
+          // which is the "no writing assistant like in chat mode" symptom
+          // in research mode. research_mode/research_depth carry whatever
+          // the model asked the user to choose (see RESEARCHING
+          // instructions in voice.py).
+          if (value === "deep_research") {
+            const researchMode = String(args.research_mode || "").trim();
+            const researchDepth = String(args.research_depth || "").trim();
+            if (!researchMode || !researchDepth) {
+              // The model called switch_capability without asking first (or
+              // asked but didn't wait for/fill in the answer) — nothing was
+              // sent, so silently returning "ok" here used to make the
+              // model think the request went through and say something like
+              // "Generating that now" over dead air. Returning an explicit
+              // error instead is fed back to the model as this turn's
+              // function result, which reliably drives it to actually ask
+              // the missing question out loud instead of falsely
+              // confirming — see RESEARCHING instructions in voice.py.
+              return {
+                status: "error",
+                message:
+                  "research_mode and research_depth are both required and " +
+                  "were not provided — nothing was generated. Ask the user " +
+                  "which kind of research they want (quick notes, a full " +
+                  "report, a comparison, or a learning path) and how deep " +
+                  "(quick, standard, or deep), then call switch_capability " +
+                  "again with request, research_mode, and research_depth " +
+                  "all filled in.",
+              };
+            }
+            const config = { mode: researchMode, depth: researchDepth };
+            sendViaBridge(explicitRequest, config);
+            return { status: "ok" };
           }
+
+          // Every remaining capability (chat, solve, mastery_path) has no
+          // dedicated config panel, so a spoken request for these is just a
+          // normal message — route it through the same real send pipeline
+          // as visualize/quiz/research above instead of the old fallback,
+          // which wrote a fabricated transcript into a brand-new session
+          // instead of the one the user was actually looking at. That made
+          // the written record land out of sync with (or invisible next
+          // to) the voice conversation — the exact "voice and writing not
+          // showing at the same time" symptom in mastery path.
+          sendViaBridge(explicitRequest);
           return { status: "ok" };
         }
         case "start_new_chat": {
@@ -435,7 +503,7 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
           return { status: "error", message: `Unknown action: ${name}` };
       }
     },
-    [chat, openHistory, closeHistory, router, pathname],
+    [chat, openHistory, closeHistory, router, pathname, sendViaBridge],
   );
 
   const call = useRealtimeVoiceCall({

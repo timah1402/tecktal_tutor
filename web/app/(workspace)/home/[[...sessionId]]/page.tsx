@@ -348,6 +348,31 @@ function mergeQuizConfigOverride(
   };
 }
 
+/**
+ * Same idea as mergeQuizConfigOverride, for research. `mode`/`depth` have
+ * no defaults (createEmptyResearchConfig starts both blank), so a
+ * voice-triggered send that never merges these in fails validation and
+ * gets silently dropped by handleSend's `if (!valid) return` — the
+ * "nothing gets written down" symptom in research mode.
+ */
+function mergeResearchConfigOverride(
+  base: DeepResearchFormConfig,
+  override: Record<string, unknown> | undefined,
+): DeepResearchFormConfig {
+  if (!override) return base;
+  return {
+    ...base,
+    mode:
+      typeof override.mode === "string"
+        ? (override.mode as DeepResearchFormConfig["mode"])
+        : base.mode,
+    depth:
+      typeof override.depth === "string"
+        ? (override.depth as DeepResearchFormConfig["depth"])
+        : base.depth,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Chat page                                                         */
 /* ------------------------------------------------------------------ */
@@ -1451,8 +1476,16 @@ export default function ChatPage() {
       }
       if (isVisualizeMode) config = buildVisualizeWSConfig(visualizeConfig);
       if (isResearchMode) {
-        if (!researchValidation.valid) return;
-        config = buildResearchWSConfig(researchConfig);
+        // Same reasoning as the quiz mode override above: a voice-triggered
+        // configOverride can supply mode/depth the panel was never opened
+        // to set, so validate the *effective* (merged) config, not the
+        // panel's possibly still-blank local state.
+        const effectiveResearchConfig = mergeResearchConfigOverride(
+          researchConfig,
+          configOverride,
+        );
+        if (!validateResearchConfig(effectiveResearchConfig).valid) return;
+        config = buildResearchWSConfig(effectiveResearchConfig);
       }
       // Voice-triggered sends carry their own config (e.g. a spoken render
       // mode preference) that bypasses the composer's own config panel —
@@ -1487,6 +1520,9 @@ export default function ChatPage() {
         }
         if (isQuizMode) {
           setQuizConfig((prev) => mergeQuizConfigOverride(prev, configOverride));
+        }
+        if (isResearchMode) {
+          setResearchConfig((prev) => mergeResearchConfigOverride(prev, configOverride));
         }
         setCapabilityConfigConfirmed(true);
       }

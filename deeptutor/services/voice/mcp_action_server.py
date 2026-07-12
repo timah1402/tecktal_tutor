@@ -60,6 +60,17 @@ _PAGES = (
 _CAPABILITIES = ("chat", "quiz", "research", "solve", "visualize", "mastery_path")
 _THEMES = ("light", "dark", "glass", "snow", "brand")
 _RENDER_MODES = ("auto", "svg", "chartjs", "mermaid", "html", "manim_video")
+_QUIZ_MODES = ("custom", "mimic")
+_QUIZ_QUESTION_TYPES = (
+    "choice",
+    "concept",
+    "fill_in_blank",
+    "short_answer",
+    "written",
+    "coding",
+)
+_RESEARCH_MODES = ("notes", "report", "comparison", "learning_path")
+_RESEARCH_DEPTHS = ("quick", "standard", "deep")
 
 
 def _error(message: str) -> dict[str, Any]:
@@ -76,7 +87,15 @@ def navigate_to(page: str) -> dict[str, Any]:
 
 @mcp.tool()
 def switch_capability(
-    capability: str, request: str = "", render_mode: str = "auto"
+    capability: str,
+    request: str = "",
+    render_mode: str = "auto",
+    quiz_mode: str = "",
+    num_questions: int = 0,
+    difficulty: str = "",
+    question_types: list[str] | None = None,
+    research_mode: str = "",
+    research_depth: str = "",
 ) -> dict[str, Any]:
     """Switch the chat composer to a different mode/capability.
 
@@ -84,17 +103,39 @@ def switch_capability(
     water cycle" for visualize), left empty for a bare mode switch. Echoed
     back unvalidated — the frontend decides what counts as a real request.
     ``render_mode`` (visualize only) is the visual format the user asked for;
-    defaults to "auto" when unspecified.
+    defaults to "auto" when unspecified. ``quiz_mode``/``num_questions``/
+    ``difficulty``/``question_types`` (quiz only) and ``research_mode``/
+    ``research_depth`` (research only) are likewise echoed back unvalidated
+    beyond the enum/type checks below — left empty/zero/None when not
+    supplied for the active capability.
     """
     if capability not in _CAPABILITIES:
         return _error(f"Unknown capability: {capability}")
     if render_mode not in _RENDER_MODES:
         return _error(f"Unknown render_mode: {render_mode}")
+    if quiz_mode and quiz_mode not in _QUIZ_MODES:
+        return _error(f"Unknown quiz_mode: {quiz_mode}")
+    if difficulty and difficulty not in ("auto", "easy", "medium", "hard"):
+        return _error(f"Unknown difficulty: {difficulty}")
+    if question_types:
+        unknown = [t for t in question_types if t not in _QUIZ_QUESTION_TYPES]
+        if unknown:
+            return _error(f"Unknown question_types: {unknown}")
+    if research_mode and research_mode not in _RESEARCH_MODES:
+        return _error(f"Unknown research_mode: {research_mode}")
+    if research_depth and research_depth not in _RESEARCH_DEPTHS:
+        return _error(f"Unknown research_depth: {research_depth}")
     return {
         "status": "ok",
         "capability": capability,
         "request": request,
         "render_mode": render_mode,
+        "quiz_mode": quiz_mode,
+        "num_questions": num_questions,
+        "difficulty": difficulty,
+        "question_types": question_types or [],
+        "research_mode": research_mode,
+        "research_depth": research_depth,
     }
 
 

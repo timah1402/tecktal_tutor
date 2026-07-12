@@ -104,14 +104,18 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "Notebooks library page itself), memory, knowledge_center.\n"
     "• switch_capability — change chat mode: chat, quiz, research, solve, "
     "visualize, mastery_path. Only fill its `request` argument when the user "
-    "gave actual concrete content to generate (a topic, a chapter, a specific "
-    "thing to visualize) — that argument triggers real generation immediately. "
-    "For a bare mode switch with no specific content yet ('switch to "
-    "visualize mode', 'let's do a quiz'), call switch_capability with "
-    "`request` empty/omitted so it just changes the mode and waits for the "
-    "user to say what they want. For visualize specifically, see the "
+    "actually said something — that argument triggers real generation "
+    "immediately. For visualize/quiz/research this means a topic ('the "
+    "water cycle', 'chapter 3'); for chat/solve/mastery_path it means "
+    "ANYTHING they said — a question, an instruction, 'continue my mastery "
+    "path', 'what's next', 'help me with this' — these are conversational, "
+    "not topic-only, so don't withhold `request` just because it isn't a "
+    "named subject. For a bare mode switch with no specific content yet "
+    "('switch to visualize mode', 'let's do a quiz'), call switch_capability "
+    "with `request` empty/omitted so it just changes the mode and waits for "
+    "the user to say what they want. For visualize specifically, see the "
     "VISUALIZING section below before filling in `request`; for quiz, see "
-    "QUIZZING below. NEVER call "
+    "QUIZZING below; for research, see RESEARCHING below. NEVER call "
     "switch_capability for a short acknowledgement or filler utterance — "
     "'thanks', 'thank you', 'ok', 'okay', 'alright', 'cool', 'got it', "
     "'sounds good', 'nice', 'sure', a laugh, or similar — these carry no new "
@@ -203,6 +207,33 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "a previous quiz's settings for a different request. After calling "
     "switch_capability(quiz) with a request, don't call it again for "
     "filler/acknowledgements or general conversation, same as visualize.\n\n"
+    "RESEARCHING — you are audio-only and never write the research output "
+    "yourself. `research_mode` and `research_depth` have NO default — "
+    "leaving either unfilled means the request cannot run and nothing "
+    "happens: switch_capability will come back as an error telling you to "
+    "ask, and if you already said something like \"generating that now\" "
+    "before that error comes back, you will have told the user something "
+    "false. So get this right on the FIRST call: whenever the user asks "
+    "for research and does NOT already say both the kind and the depth, "
+    "your very next turn must be ONLY the clarifying question — do not "
+    "call switch_capability with `request` filled in until you have both. "
+    "Ask ONE short follow-up — e.g. \"Would you like quick notes, a full "
+    "report, a comparison, or a learning path — and how deep, quick, "
+    "standard, or deep?\" — and wait for their answer before calling "
+    "switch_capability. Skip asking a part they already told you. If they "
+    "say they don't care about depth specifically, use 'standard'; there is "
+    "no 'auto' for research_mode though, so if they truly have no "
+    "preference on the KIND of output, ask them to just pick one — don't "
+    "guess. Once both are known, call switch_capability with `request` (the "
+    "topic), `research_mode`, and `research_depth` filled in. After "
+    "calling, mention briefly that research can take a while and that "
+    "they'll see an outline to review in the chat before the full result — "
+    "you won't be the one presenting that outline. Exactly like visualize "
+    "and quiz, this is per-request, not per-session: a new, distinct "
+    "research request needs its own mode/depth asked again — never reuse a "
+    "previous request's settings for a different topic. After calling "
+    "switch_capability(research) with a request, don't call it again for "
+    "filler/acknowledgements or general conversation.\n\n"
     "UNCLEAR AUDIO — if the transcribed input is empty, garbled, just "
     "background noise, or otherwise doesn't contain an actual question or "
     "request, do NOT invent a topic or continue rambling on an unrelated "
@@ -286,14 +317,23 @@ _REALTIME_TOOLS = [
                 "request": {
                     "type": "string",
                     "description": (
-                        "The specific thing to generate, ONLY if the user actually "
-                        "described concrete content — e.g. 'the water cycle' for "
-                        "'visualize the water cycle', or 'chapter 3 on photosynthesis' "
-                        "for 'quiz me on chapter 3'. Leave this empty/omit it entirely "
-                        "when the user only asked to switch modes with no specific "
-                        "content yet, e.g. 'switch to visualize mode' or 'let's do a "
-                        "quiz' — passing anything here starts real generation "
-                        "immediately, which would be wrong for a bare mode switch."
+                        "The user's actual message/request, ONLY if they gave one — "
+                        "for visualize/quiz/research this is a topic, e.g. 'the water "
+                        "cycle' for 'visualize the water cycle', or 'chapter 3 on "
+                        "photosynthesis' for 'quiz me on chapter 3'; for chat/solve/"
+                        "mastery_path it's whatever they said — a question, an "
+                        "instruction, or a follow-up like 'continue my mastery path', "
+                        "'quiz me on the next topic', 'what should I study next', or "
+                        "'help me with this problem' ALL count as real content here, "
+                        "not just named topics — these capabilities hold open-ended "
+                        "conversation, they don't need a topic noun-phrase the way "
+                        "visualize/quiz/research do. Leave this empty/omit it "
+                        "entirely ONLY when the user asked to switch modes with "
+                        "nothing else said yet, e.g. 'switch to visualize mode' or "
+                        "'let's do a quiz' with no follow-up — passing anything here "
+                        "starts real generation immediately, which would be wrong "
+                        "for a bare mode switch, but leaving it empty when they DID "
+                        "say something means their message is silently dropped."
                     ),
                 },
                 "render_mode": {
@@ -368,6 +408,32 @@ _REALTIME_TOOLS = [
                         "'coding'. Ask the user if not already said, unless they "
                         "say any type / they don't care — then omit this entirely "
                         "so the app picks freely. Multiple types may be given."
+                    ),
+                },
+                "research_mode": {
+                    "type": "string",
+                    "enum": ["notes", "report", "comparison", "learning_path"],
+                    "description": (
+                        "REQUIRED when capability='research' and `request` is "
+                        "filled in — there is no default, so omitting this means "
+                        "the request cannot run. Map their words to: quick study "
+                        "notes -> 'notes'; a full written report -> 'report'; "
+                        "comparing two or more things -> 'comparison'; a "
+                        "structured learning plan/curriculum -> 'learning_path'. "
+                        "Ask the user first (see RESEARCHING instructions) unless "
+                        "they already said."
+                    ),
+                },
+                "research_depth": {
+                    "type": "string",
+                    "enum": ["quick", "standard", "deep"],
+                    "description": (
+                        "REQUIRED when capability='research' and `request` is "
+                        "filled in — there is no default, so omitting this means "
+                        "the request cannot run. How thorough the research should "
+                        "be. Ask the user first (see RESEARCHING instructions) "
+                        "unless they already said, or default to 'standard' if "
+                        "they explicitly say they don't care."
                     ),
                 },
             },
