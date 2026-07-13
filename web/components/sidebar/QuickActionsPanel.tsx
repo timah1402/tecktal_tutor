@@ -455,14 +455,24 @@ export function QuickActionsPanel({
           <X size={16} strokeWidth={1.8} />
         </button>
 
-        {/* Header */}
-      <Link href="/" aria-label="TECKTAL TUTOR" className="group flex items-center px-1">
+        {/* Header — large (95px) and centered on the neutral hero, shrinks
+            to 45px and left-aligned once the strip is showing so it
+            settles down to a compact mark. */}
+      <Link
+        href="/"
+        aria-label="TECKTAL TUTOR"
+        className={`group flex items-center px-1 transition-all duration-200 ${
+          showStrip ? "" : "justify-center mt-6"
+        }`}
+      >
         <Image
           src="/logo.png"
           alt="TECKTAL TUTOR"
-          width={40}
-          height={40}
-          className="h-10 w-10 transition-transform duration-200 group-hover:scale-105"
+          width={showStrip ? 45 : 95}
+          height={showStrip ? 45 : 95}
+          className={`transition-all duration-200 group-hover:scale-105 ${
+            showStrip ? "h-[45px] w-[45px]" : "h-[95px] w-[95px]"
+          }`}
         />
       </Link>
 

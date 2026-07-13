@@ -801,24 +801,24 @@ body[data-picker-open] .dt-mark-pulse {
 }
 
 .dt-tooltip-content {
-  @apply absolute z-50 rounded-lg bg-[var(--popover)] px-3 py-1.5 text-xs shadow-md text-[var(--popover-foreground)] pointer-events-none;
+  @apply fixed z-50 whitespace-nowrap rounded-lg bg-[var(--popover)] px-3 py-1.5 text-xs shadow-md text-[var(--popover-foreground)] pointer-events-none max-w-[240px];
   animation: dt-tooltip-fade-in 150ms ease-out;
 }
 
 .dt-tooltip-label {
-  @apply font-medium truncate;
+  @apply font-medium;
 }
 
 .dt-tooltip-desc {
-  @apply mt-0.5 text-[11px] text-[var(--muted-foreground)] truncate;
+  @apply mt-0.5 text-[11px] text-[var(--muted-foreground)] whitespace-normal;
 }
 
 .dt-tooltip-content[data-side="right"] {
-  @apply left-full top-1/2 -translate-y-1/2 ml-2 max-w-[200px];
+  @apply -translate-y-1/2;
 }
 
 .dt-tooltip-content[data-side="bottom"] {
-  @apply bottom-[-40px] left-1/2 -translate-x-1/2 max-w-[180px];
+  @apply -translate-x-1/2;
 }
 
 @keyframes dt-tooltip-fade-in {
