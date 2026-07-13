@@ -18,6 +18,7 @@ import {
 import { useTranslation } from "react-i18next";
 import AssistantResponse from "@/components/common/AssistantResponse";
 import { useAppShell } from "@/context/AppShellContext";
+import { useVoiceCall } from "@/context/VoiceCallContext";
 import { getSession } from "@/lib/session-api";
 import {
   ATTACHMENT_ACCEPT,
@@ -103,6 +104,7 @@ export default function BookChatPanel({
 }: BookChatPanelProps) {
   const { t } = useTranslation();
   const { language: appLanguage } = useAppShell();
+  const voiceCall = useVoiceCall();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -368,8 +370,11 @@ export default function BookChatPanel({
     void addFiles(files);
   }
 
-  async function send() {
-    const text = input.trim();
+  // overrideText: a voice-supplied turn (see the composer-bridge effect
+  // below) bypasses the `input` field entirely — it was never typed, so
+  // there's nothing there to clear.
+  async function send(overrideText?: string) {
+    const text = (overrideText ?? input).trim();
     if ((!text && attachments.length === 0) || busy || !book || !page) return;
     const userContent =
       text ||
@@ -383,7 +388,7 @@ export default function BookChatPanel({
       ...prev,
       { role: "user", content: userContent, attachments: sentAttachments },
     ]);
-    setInput("");
+    if (overrideText === undefined) setInput("");
     setAttachments([]);
     setAttachmentError(null);
     setBusy(true);
@@ -402,6 +407,34 @@ export default function BookChatPanel({
     };
     sendWithRetry(client, payload);
   }
+
+  // `send` is a plain (non-memoized) function redefined every render, so
+  // the effect below reads it through a ref instead of depending on it
+  // directly — otherwise it would tear down and re-register the bridge on
+  // every keystroke into the composer. No deps array: intentionally syncs
+  // on every render, since (unlike a real dependency) a ref write isn't
+  // supposed to skip renders — it's not read during render at all.
+  const sendRef = useRef(send);
+  useEffect(() => {
+    sendRef.current = send;
+  });
+
+  // This panel has its own dedicated WS client (ensureClient/UnifiedWSClient
+  // above), entirely outside UnifiedChatContext/the home composer bridge —
+  // voice had no way to reach it at all. Being open at all is already an
+  // explicit, unambiguous target (same reasoning as PartnerChat), so
+  // alwaysForward: true skips the home composer's "blank chat" guard.
+  useEffect(() => {
+    if (!open) return;
+    voiceCall.registerComposerBridge({
+      hasPendingAttachments: () => false,
+      send: (text: string) => {
+        void sendRef.current(text);
+      },
+      alwaysForward: true,
+    });
+    return () => voiceCall.registerComposerBridge(null);
+  }, [voiceCall, open]);
 
   if (!open) return null;
 

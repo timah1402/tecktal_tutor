@@ -332,7 +332,19 @@ class BookEngine:
                         },
                         stage=STAGE_EXPLORATION,
                     )
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError) as exc:
+                # SourceExplorer is best-effort context enrichment — the
+                # spine still gets synthesized from the proposal alone below
+                # either way, so no failure here should ever crash the whole
+                # confirm-proposal request. Explicitly widened past `Exception`
+                # to `asyncio.CancelledError` (a BaseException subclass, so
+                # `except Exception` alone doesn't catch it): querying a
+                # knowledge base that's still being indexed concurrently can
+                # surface as a cancelled internal task, which used to escape
+                # every try/except up the stack — including this router's own
+                # `except Exception` — producing an opaque, unlogged 500
+                # instead of the graceful "proposal-only spine" fallback this
+                # block is supposed to provide.
                 logger.warning(f"SourceExplorer failed for {book.id}: {exc}")
                 exploration = None
                 await bstream.progress(
