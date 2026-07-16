@@ -105,6 +105,18 @@ export function dispatchQuizSessionAction(action: QuizSessionAction): void {
   );
 }
 
+// Fired by VoiceCallContext's open_upload tool handler so the composer's
+// existing file input (ChatComposer's `handlePickFiles`) opens the OS file
+// picker exactly as if the user had clicked the attach/paperclip button
+// themselves. No-op if no composer is mounted to hear it. Transient signal,
+// not persisted.
+export const OPEN_FILE_PICKER_EVENT = "deeptutor:open-file-picker";
+
+export function dispatchOpenFilePicker(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(OPEN_FILE_PICKER_EVENT));
+}
+
 export function normalizeLanguage(
   value: string | null | undefined,
 ): AppLanguage {

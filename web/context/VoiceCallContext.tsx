@@ -29,6 +29,7 @@ import { useRealtimeVoiceCall, type RealtimeCallState } from "@/hooks/useRealtim
 import {
   dispatchCapabilitySelect,
   dispatchExpandDock,
+  dispatchOpenFilePicker,
   dispatchQuizSessionAction,
 } from "@/context/app-shell-storage";
 import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
@@ -500,6 +501,9 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
           return { status: "ok" };
         case "close_history":
           closeHistory();
+          return { status: "ok" };
+        case "open_upload":
+          dispatchOpenFilePicker();
           return { status: "ok" };
         case "set_theme": {
           const requested = String(args.theme || "");

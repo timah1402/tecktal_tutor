@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
-  Coins,
   Copy,
   AlertCircle,
   Database,
@@ -48,6 +47,7 @@ import {
 } from "@/lib/quiz-types";
 import { extractVisualizeResult } from "@/lib/visualize-types";
 import type { StreamEvent } from "@/lib/unified-ws";
+import { collectNarrationCallIds, shouldAppendEventContent } from "@/lib/stream";
 import { hasVisibleMarkdownContent } from "@/lib/markdown-display";
 import type { SelectedBookReference } from "@/lib/book-references";
 import { buildVisiblePath, type SiblingInfo } from "@/lib/message-branches";
@@ -391,13 +391,21 @@ const AssistantMessage = memo(function AssistantMessage({
       {/* Activity block pinned to the TOP: the status header
           ("DeepTutor Exploring… · 8s" → "DeepTutor responded. · 10s") with
           the exploring trace nested beneath it — expanded while DeepTutor is
-          still working, collapsed once it settles into the final answer. */}
-      <AssistantActivity
-        events={events}
-        isStreaming={isStreaming}
-        content={msg.content}
-        className="mb-3"
-      />
+          still working, collapsed once it settles into the final answer.
+          Skipped for Deep Solve: its plan/step tool calls (solve_plan,
+          solve_finish_step) are internal bookkeeping, not something a
+          learner should have to parse — they should just see the
+          step-by-step resolution stream in directly (paired with the
+          spoken narration in voice mode), not a trace of the tool calls
+          that produced it. */}
+      {msg.capability !== "deep_solve" && (
+        <AssistantActivity
+          events={events}
+          isStreaming={isStreaming}
+          content={msg.content}
+          className="mb-3"
+        />
+      )}
       {outlinePreview && outlinePreview.sub_topics.length > 0 ? (
         <>
           {/* Layout for the merged research bubble:
@@ -512,40 +520,6 @@ const AssistantMessage = memo(function AssistantMessage({
 
 AssistantMessage.displayName = "AssistantMessage";
 
-function CostFooter({
-  cost,
-  tokens,
-  calls,
-}: {
-  cost: number;
-  tokens: number;
-  calls: number;
-}) {
-  const { t } = useTranslation();
-  const formatCost = (usd: number) => {
-    if (usd < 0.01) return `$${usd.toFixed(4)}`;
-    return `$${usd.toFixed(2)}`;
-  };
-  const formatTokens = (n: number) => {
-    if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-    return String(n);
-  };
-  return (
-    <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]/70">
-      <Coins size={11} strokeWidth={1.5} className="shrink-0" />
-      <span>{formatCost(cost)}</span>
-      <span className="opacity-50">·</span>
-      <span>
-        {formatTokens(tokens)} {t("tokens")}
-      </span>
-      <span className="opacity-50">·</span>
-      <span>
-        {calls} {t("calls")}
-      </span>
-    </div>
-  );
-}
-
 // Claude-style icon-only message action: a quiet 15px glyph with the label
 // in an instant tooltip, brightening on hover.
 function RoughActionButton({
@@ -623,30 +597,26 @@ function CopyActionButton({
 }
 
 // Speaker button: synthesizes the reply via the configured TTS provider and
-// plays it. On the first manual play of a session it offers to auto-play the
-// rest; `autoPlayFresh` triggers playback automatically for a reply that just
-// finished generating when auto-play is on.
+// plays it on demand. Automatic playback is handled separately, live, by
+// LiveVoiceNarrator below — this button now only covers the manual
+// click-to-(re)play case (and the first-play "auto-play this session?"
+// prompt), since by the time this button exists (`showActions`, i.e. the
+// reply has fully finished) the live narrator has generally already spoken
+// it as it streamed in.
 function PlayAudioButton({
   content,
   conversationKey,
-  autoPlayFresh,
 }: {
   content: string;
   conversationKey?: string;
-  autoPlayFresh: boolean;
 }) {
   const { t } = useTranslation();
-  const {
-    autoplayEnabled,
-    enableForSession,
-    markPrompted,
-    shouldPromptOnFirstPlay,
-  } = useVoiceAutoplay(conversationKey);
+  const { enableForSession, markPrompted, shouldPromptOnFirstPlay } =
+    useVoiceAutoplay(conversationKey);
   const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
   const [showPrompt, setShowPrompt] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
-  const autoPlayedRef = useRef(false);
 
   const cleanup = useCallback(() => {
     if (audioRef.current) {
@@ -708,17 +678,6 @@ function PlayAudioButton({
     }
   }, [cleanup, markPrompted, play, shouldPromptOnFirstPlay, state]);
 
-  // Auto-play a freshly-generated reply when enabled, exactly once. Deferred
-  // to a timer so synthesis (which sets state) starts off the effect body.
-  useEffect(() => {
-    if (!autoPlayFresh || !autoplayEnabled) return;
-    if (autoPlayedRef.current) return;
-    if (!content.trim()) return;
-    autoPlayedRef.current = true;
-    const id = window.setTimeout(() => void play(), 0);
-    return () => window.clearTimeout(id);
-  }, [autoPlayFresh, autoplayEnabled, content, play]);
-
   useEffect(() => cleanup, [cleanup]);
 
   return (
@@ -774,6 +733,206 @@ function PlayAudioButton({
       )}
     </div>
   );
+}
+
+// Sentence-ending punctuation followed by whitespace (or end of string, once
+// streaming has finished) — the point at which a chunk of text is "final
+// enough" to hand to TTS without waiting for the rest of the reply.
+const SENTENCE_BOUNDARY_RE = /[.!?][)\]"'”]*(?:\s+|$)/g;
+
+/** Split already-settled text into sentence-sized chunks for TTS playback
+ * (smoother pacing than one long call), falling back to the whole string
+ * if it has no sentence-ending punctuation at all. */
+function splitIntoSentences(text: string): string[] {
+  const parts: string[] = [];
+  let last = 0;
+  SENTENCE_BOUNDARY_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SENTENCE_BOUNDARY_RE.exec(text))) {
+    const end = match.index + match[0].length;
+    parts.push(text.slice(last, end));
+    last = end;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+/**
+ * Speaks an assistant reply sentence by sentence AS it streams in — "the
+ * teacher talks while writing," instead of staying silent until the whole
+ * reply is done and then reading it back in one long chunk. Mounted for
+ * every assistant message (unlike PlayAudioButton, which only exists once
+ * the reply is fully done) so it can observe the turn's events actually
+ * growing: each complete sentence is queued the moment it's confirmed safe
+ * to speak, and a single playback loop synthesizes + plays queued sentences
+ * strictly in order so they never overlap. Renders nothing.
+ *
+ * "Confirmed safe to speak" differs by capability:
+ *  - Deep Solve never retracts any round's text (see UnifiedChatContext's
+ *    narration-stripping exception for it) — every step is meant to be
+ *    read as it's written, so its rounds are spoken live, mid-stream.
+ *  - Every other capability strips a round's text from the visible bubble
+ *    retroactively if it resolves as "narration" (a preamble before a tool
+ *    call). Speaking that text live, before we know its fate, would have
+ *    the voice occasionally say something the user never sees in the
+ *    bubble — so for these, a round is only queued for speech once its own
+ *    call_status marker confirms it survived as part of the answer.
+ */
+function LiveVoiceNarrator({
+  content,
+  events,
+  capability,
+  isStreaming,
+  enabled,
+}: {
+  content: string;
+  events?: StreamEvent[];
+  capability?: string;
+  isStreaming: boolean;
+  enabled: boolean;
+}) {
+  const spokenLenRef = useRef(0);
+  const handledCallIdsRef = useRef<Set<string>>(new Set());
+  const queueRef = useRef<string[]>([]);
+  const processingRef = useRef(false);
+  const stoppedRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
+  // Only ever narrate a message that was actually streaming live at some
+  // point during this component's lifetime — never a historical message
+  // that was already complete the moment it mounted (e.g. loading a past
+  // session), which would otherwise get read aloud in full on page load.
+  const everStreamedRef = useRef(false);
+  if (isStreaming) everStreamedRef.current = true;
+
+  const cleanupAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
+    }
+  }, []);
+
+  const processQueue = useCallback(async () => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    try {
+      while (queueRef.current.length > 0 && !stoppedRef.current) {
+        const text = queueRef.current.shift()?.trim();
+        if (!text) continue;
+        try {
+          const resp = await apiFetch(apiUrl("/api/v1/voice/tts"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+          });
+          if (!resp.ok || stoppedRef.current) continue;
+          const blob = await resp.blob();
+          if (stoppedRef.current) continue;
+          const url = URL.createObjectURL(blob);
+          urlRef.current = url;
+          const audio = new Audio(url);
+          audioRef.current = audio;
+          await new Promise<void>((resolve) => {
+            audio.onended = () => resolve();
+            audio.onerror = () => resolve();
+            audio.play().catch(() => resolve());
+          });
+          cleanupAudio();
+        } catch {
+          // Drop this chunk and keep going — one failed sentence shouldn't
+          // silence the rest of the reply.
+        }
+      }
+    } finally {
+      processingRef.current = false;
+    }
+  }, [cleanupAudio]);
+
+  useEffect(() => {
+    if (!enabled || !everStreamedRef.current) return;
+
+    if (capability === "deep_solve") {
+      // Nothing is ever retracted for Solve — safe to speak live as the
+      // text streams in, sentence by sentence.
+      const unseen = content.slice(spokenLenRef.current);
+      if (!unseen) return;
+      if (isStreaming) {
+        let boundaryEnd = 0;
+        SENTENCE_BOUNDARY_RE.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = SENTENCE_BOUNDARY_RE.exec(unseen))) {
+          boundaryEnd = match.index + match[0].length;
+        }
+        if (boundaryEnd > 0) {
+          spokenLenRef.current += boundaryEnd;
+          queueRef.current.push(unseen.slice(0, boundaryEnd));
+          void processQueue();
+        }
+      } else {
+        // Streaming just ended — flush whatever's left (e.g. a short
+        // closing round with no terminal punctuation).
+        spokenLenRef.current += unseen.length;
+        queueRef.current.push(unseen);
+        void processQueue();
+      }
+      return;
+    }
+
+    // Every other capability: only speak a round once its own call_status
+    // marker confirms it resolved as "finish", not "narration" — otherwise
+    // we might read aloud a preamble that the bubble immediately retracts.
+    const evts = events ?? [];
+    const narrationIds = collectNarrationCallIds(evts);
+    const textByCallId = new Map<string, string>();
+    const finishedCallIds = new Set<string>();
+    for (const event of evts) {
+      const meta = (event.metadata ?? {}) as {
+        call_id?: string;
+        call_kind?: string;
+        trace_kind?: string;
+        call_state?: string;
+      };
+      const cid = meta.call_id;
+      if (!cid) continue;
+      if (shouldAppendEventContent(event)) {
+        textByCallId.set(cid, (textByCallId.get(cid) ?? "") + event.content);
+      }
+      if (meta.trace_kind === "call_status" && meta.call_state === "complete") {
+        finishedCallIds.add(cid);
+      }
+    }
+    for (const [callId, text] of textByCallId) {
+      if (handledCallIdsRef.current.has(callId)) continue;
+      if (narrationIds.has(callId)) {
+        handledCallIdsRef.current.add(callId); // confirmed retracted — never speak it
+        continue;
+      }
+      if (!finishedCallIds.has(callId) && isStreaming) continue; // still unresolved — wait
+      handledCallIdsRef.current.add(callId);
+      if (!text.trim()) continue;
+      for (const sentence of splitIntoSentences(text)) queueRef.current.push(sentence);
+      void processQueue();
+    }
+  }, [content, events, capability, isStreaming, enabled, processQueue]);
+
+  useEffect(() => {
+    // React StrictMode double-invokes effects in dev (mount → cleanup →
+    // mount again) — without resetting `stoppedRef` back to false here on
+    // (re)mount, that dev-only cleanup-then-remount cycle would leave it
+    // permanently `true`, silently freezing processQueue's while loop
+    // before it ever pops an item (it checks `!stoppedRef.current`).
+    stoppedRef.current = false;
+    return () => {
+      stoppedRef.current = true;
+      cleanupAudio();
+    };
+  }, [cleanupAudio]);
+
+  return null;
 }
 
 function BranchNavigator({
@@ -1296,27 +1455,12 @@ export const ChatMessageList = memo(function ChatMessageList({
     return -1;
   }, [messageRows]);
 
-  // Auto-play (when enabled) must fire only for a reply that JUST finished
-  // generating — never when loading history. We capture the last-assistant
-  // index at the moment streaming flips off; the matching speaker button
-  // plays once. Switching sessions clears the marker. Uses the "adjust state
-  // during render" pattern (state-vs-prop comparison, like the API-key reset
-  // in ServiceConfigEditor) — both branches are conditional and bounded.
-  const [prevStreaming, setPrevStreaming] = useState(isStreaming);
-  const [prevSession, setPrevSession] = useState(sessionId);
-  const [freshlyCompletedIndex, setFreshlyCompletedIndex] = useState<
-    number | null
-  >(null);
-  if (prevSession !== sessionId) {
-    setPrevSession(sessionId);
-    setPrevStreaming(false);
-    setFreshlyCompletedIndex(null);
-  } else if (prevStreaming !== isStreaming) {
-    setPrevStreaming(isStreaming);
-    if (!isStreaming && lastRenderedAssistantIndex >= 0) {
-      setFreshlyCompletedIndex(lastRenderedAssistantIndex);
-    }
-  }
+  // Live sentence-by-sentence narration (LiveVoiceNarrator below) replaces
+  // the old "wait for the whole reply, then read it once it's done"
+  // auto-play: it watches every assistant row's own streaming state and
+  // only speaks a reply that is (or just was) actively streaming in THIS
+  // component's lifetime, so loading history never triggers playback.
+  const { autoplayEnabled } = useVoiceAutoplay(sessionId ?? undefined);
 
   return (
     <>
@@ -1358,24 +1502,6 @@ export const ChatMessageList = memo(function ChatMessageList({
             : null;
         const showDelete = deletableTurnUserId != null;
 
-        const costSummary = (() => {
-          if (!msgDone) return null;
-          const resultEv = msg.events?.find((e) => e.type === "result");
-          if (!resultEv) return null;
-          const meta = resultEv.metadata?.metadata as
-            | Record<string, unknown>
-            | undefined;
-          const cs = meta?.cost_summary as
-            | {
-                total_cost_usd?: number;
-                total_tokens?: number;
-                total_calls?: number;
-              }
-            | undefined;
-          if (!cs || !cs.total_calls) return null;
-          return cs;
-        })();
-
         return (
           <div key={`${msg.role}-${i}`} className="w-full">
             <InlineFileCardProvider
@@ -1396,6 +1522,17 @@ export const ChatMessageList = memo(function ChatMessageList({
                 }
               />
             </InlineFileCardProvider>
+            <LiveVoiceNarrator
+              content={msg.content}
+              events={msg.events}
+              capability={msg.capability}
+              isStreaming={isActiveAssistant}
+              enabled={
+                autoplayEnabled &&
+                isLastAssistant &&
+                msg.capability !== "realtime_voice"
+              }
+            />
             <GeneratedFileCards
               attachments={msg.attachments ?? []}
               events={msg.events}
@@ -1433,53 +1570,34 @@ export const ChatMessageList = memo(function ChatMessageList({
                 </div>
               );
             })()}
-            {(showActions || costSummary || showDelete) && (
+            {(showActions || showDelete) && (
               <div className="mt-3 flex items-center">
-                {(showActions || showDelete) && (
-                  <div className="flex items-center gap-1">
-                    {showActions && (
-                      <CopyActionButton
-                        content={msg.content}
-                        onCopy={onCopyAssistantMessage}
-                      />
-                    )}
-                    {showActions && (
-                      <PlayAudioButton
-                        content={msg.content}
-                        conversationKey={sessionId ?? undefined}
-                        autoPlayFresh={
-                          isLastAssistant &&
-                          freshlyCompletedIndex === i &&
-                          // Realtime-voice messages already had their audio
-                          // played live during the call — autoplaying TTS on
-                          // top would double-speak the same reply.
-                          msg.capability !== "realtime_voice"
-                        }
-                      />
-                    )}
-                    {showActions && showRegenerate && (
-                      <RoughActionButton
-                        icon={RefreshCcw}
-                        label={t("Regenerate")}
-                        onClick={() => onRegenerateMessage()}
-                      />
-                    )}
-                    {showDelete && (
-                      <DeleteTurnButton
-                        onDelete={() => onDeleteTurn?.(deletableTurnUserId)}
-                      />
-                    )}
-                  </div>
-                )}
-                {costSummary && (
-                  <div className="ml-auto">
-                    <CostFooter
-                      cost={costSummary.total_cost_usd ?? 0}
-                      tokens={costSummary.total_tokens ?? 0}
-                      calls={costSummary.total_calls ?? 0}
+                <div className="flex items-center gap-1">
+                  {showActions && (
+                    <CopyActionButton
+                      content={msg.content}
+                      onCopy={onCopyAssistantMessage}
                     />
-                  </div>
-                )}
+                  )}
+                  {showActions && (
+                    <PlayAudioButton
+                      content={msg.content}
+                      conversationKey={sessionId ?? undefined}
+                    />
+                  )}
+                  {showActions && showRegenerate && (
+                    <RoughActionButton
+                      icon={RefreshCcw}
+                      label={t("Regenerate")}
+                      onClick={() => onRegenerateMessage()}
+                    />
+                  )}
+                  {showDelete && (
+                    <DeleteTurnButton
+                      onDelete={() => onDeleteTurn?.(deletableTurnUserId)}
+                    />
+                  )}
+                </div>
               </div>
             )}
           </div>

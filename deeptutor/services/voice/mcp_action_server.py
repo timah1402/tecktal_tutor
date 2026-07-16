@@ -161,6 +161,12 @@ def close_history() -> dict[str, Any]:
 
 
 @mcp.tool()
+def open_upload() -> dict[str, Any]:
+    """Open the file-attachment picker in the chat composer."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
 def set_theme(theme: str) -> dict[str, Any]:
     """Change the app's visual theme."""
     if theme not in _THEMES:

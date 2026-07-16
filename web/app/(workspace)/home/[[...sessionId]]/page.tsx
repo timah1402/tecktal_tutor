@@ -630,6 +630,7 @@ export default function ChatPage() {
   const isQuizMode = activeCap.value === "deep_question";
   const isVisualizeMode = activeCap.value === "visualize";
   const isResearchMode = activeCap.value === "deep_research";
+  const isSolveMode = activeCap.value === "deep_solve";
   const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
 
   // Edit-invalidates-confirm wrappers — flipping any field after the user
@@ -681,6 +682,25 @@ export default function ChatPage() {
       ensureActivityPanelOpen();
     }
   }, [capabilityNeedsConfig, ensureActivityPanelOpen]);
+
+  /**
+   * Mirror image of the auto-open effect above, for Deep Solve: its
+   * "Activity" home is just a tally of internal plan/step tool calls
+   * (solve_plan, solve_finish_step, …) that mean nothing to a learner, so a
+   * panel left open from a previous capability/session shouldn't carry over
+   * and sit there showing that tally. One-shot on the transition into Solve
+   * only — it doesn't fight the user if they open it themselves afterward
+   * (e.g. to view a generated file), and doesn't stop that legitimate
+   * auto-open from firing later in the same session.
+   */
+  const lastIsSolveModeRef = useRef(isSolveMode);
+  useEffect(() => {
+    const prev = lastIsSolveModeRef.current;
+    lastIsSolveModeRef.current = isSolveMode;
+    if (!prev && isSolveMode) {
+      setViewerOpen(false);
+    }
+  }, [isSolveMode, setViewerOpen]);
   const hasMessages = state.messages.length > 0;
   // Time-of-day greeting: seeded once on mount from the user's local clock so
   // the heading stays stable while they're on the page. State (not useMemo)

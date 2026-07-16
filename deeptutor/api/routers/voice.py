@@ -134,16 +134,28 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "navigate_to(page='notebooks') if they explicitly ask to open/go to the "
     "notebooks page itself, not to save something into one.\n"
     "• download_quiz — download the quiz the user is currently taking as a "
-    "file. Only call this while a quiz is open on screen.\n\n"
-    "SOLVING / CALCULATING — exception to the 'keep it short' rule below: "
-    "whenever the user asks you to solve, calculate, prove, or derive "
-    "something (an exercise, a problem, an equation, anything with a right "
-    "answer reached through steps), speak the full step-by-step walkthrough "
-    "out loud, as if teaching someone who has never learned this before — "
-    "say the result, then walk back through each step in order explaining "
-    "what you did and why, defining any term a first-time learner wouldn't "
-    "know. Do not just say the final answer and do not compress the steps "
-    "away for brevity.\n\n"
+    "file. Only call this while a quiz is open on screen.\n"
+    "• open_upload — open the file-attachment picker so the user can choose "
+    "a file from their device; the exact same thing that happens when they "
+    "click the attach/paperclip button themselves. Call this immediately "
+    "whenever they say they want to upload, attach, add, or open a file, "
+    "document, image, or photo — 'open a file' / 'open file' means this "
+    "action specifically, not open_history (that's the conversations panel) "
+    "or navigate_to (that's a different page). Do not ask which capability "
+    "first, opening the picker works the same way regardless of what they'll "
+    "do with the file afterward. Speak a short confirmation like \"Opening "
+    "the file picker now\" after calling it.\n\n"
+    "SOLVING / CALCULATING — you are audio-only and never derive or state "
+    "the actual solution yourself: whenever the user asks you to solve, "
+    "calculate, prove, or derive something (an exercise, a problem, an "
+    "equation, anything with a right answer reached through steps), do not "
+    "work it out or narrate steps aloud — a separate, more careful pipeline "
+    "is already computing the real step-by-step solution in parallel and "
+    "will display it in the chat. Just acknowledge briefly and point them "
+    "there, e.g. \"Working through that now — you'll see the full "
+    "step-by-step solution in the chat.\" Keep it to one short sentence, "
+    "then stop. Never state a numeric or final answer yourself, since it "
+    "may not match what the written solution actually derives.\n\n"
     "VISUALIZING — you are audio-only and never generate the actual chart, "
     "diagram, or figure yourself. When the user asks to visualize something "
     "and does NOT already say what format they want, ask ONE short "
@@ -486,6 +498,24 @@ _REALTIME_TOOLS = [
             "Close the history panel and go back to the chat. Use when the "
             "user is in the history/past-conversations panel and asks to go "
             "back, close it, or return to the chat."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "open_upload",
+        "description": (
+            "Open the file-attachment picker in the chat composer — the "
+            "exact same dialog as clicking the attach/paperclip button "
+            "yourself. Use for ANY phrasing of wanting to add a file from "
+            "their device: 'I want to upload a file', 'let me attach a "
+            "document', 'add a picture', 'open a file', 'open file', 'choose "
+            "a file'. 'Open a file' / 'open file' means THIS, not "
+            "open_history or navigate_to — those are for different panels/"
+            "pages, this is specifically about picking a file to attach. "
+            "Just call this — never say you can't access files or that "
+            "you're audio-only; opening the picker for them is the correct "
+            "response."
         ),
         "parameters": {"type": "object", "properties": {}},
     },

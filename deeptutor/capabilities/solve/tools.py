@@ -127,9 +127,11 @@ class SolvePlanTool(BaseTool):
                 "steps": session.map(),
                 "next": first.to_dict() if first else None,
                 "instruction": (
-                    "Work the first step now using the available tools, then call "
-                    "solve_finish_step with a short summary of its result. Do not "
-                    "skip steps."
+                    "Write the first step's explanation as your message text now "
+                    "(a full teaching explanation, not a placeholder — the user is "
+                    "reading it live), then work the step with the available "
+                    "tools, then call solve_finish_step with a short summary of "
+                    "its result. Do not skip steps."
                 ),
             },
             meta_key="solve_plan",
@@ -188,9 +190,16 @@ class SolveFinishStepTool(BaseTool):
             "next": nxt.to_dict() if nxt else None,
             "all_done": session.all_done(),
             "instruction": (
-                "Write the final answer now."
+                "Write a short final answer now (2-4 sentences, no tool calls) — "
+                "the reader already watched every step explained live, so do not "
+                "repeat the walkthrough."
                 if nxt is None
-                else "Work the next step, then call solve_finish_step again."
+                else (
+                    "Write the next step's explanation as your message text "
+                    "first (a full teaching explanation, not a placeholder), "
+                    "then work it with the available tools, then call "
+                    "solve_finish_step again."
+                )
             ),
         }
         # The checkpoint summary persists this step's outcome while the loop

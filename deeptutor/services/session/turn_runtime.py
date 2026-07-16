@@ -1673,9 +1673,18 @@ class TurnRuntimeManager:
                 if _should_capture_assistant_content(event):
                     call_id = (event.metadata or {}).get("call_id")
                     content_segments.append((str(call_id) if call_id else None, event.content))
-                narration_call_id = _narration_marker_call_id(event)
-                if narration_call_id:
-                    narration_call_ids.add(narration_call_id)
+                # Deep Solve is the one capability where narration rounds
+                # ARE the answer (each step's explanation, written live
+                # before that step's tool calls) — mirrors the frontend's
+                # identical carve-out in UnifiedChatContext's STREAM_EVENT
+                # reducer, so the persisted content matches what the user
+                # already watched stream in instead of being stripped back
+                # down to just the closing round once the turn completes
+                # and the session reloads.
+                if capability_name != "deep_solve":
+                    narration_call_id = _narration_marker_call_id(event)
+                    if narration_call_id:
+                        narration_call_ids.add(narration_call_id)
                 for attachment in _artifact_attachments(event):
                     if attachment["url"] not in seen_artifact_urls:
                         seen_artifact_urls.add(attachment["url"])

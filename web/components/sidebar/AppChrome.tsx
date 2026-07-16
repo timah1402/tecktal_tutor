@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import AppSidebar from "@/components/sidebar/AppSidebar";
 import CapabilityGate from "@/components/access/CapabilityGate";
+import FeatureGate from "@/components/access/FeatureGate";
 
 const BARE_PREFIXES = ["/login", "/register"];
 
@@ -24,7 +25,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden">
       <AppSidebar />
       <main className="flex-1 overflow-hidden bg-[var(--background)]">
-        <CapabilityGate>{children}</CapabilityGate>
+        <FeatureGate>
+          <CapabilityGate>{children}</CapabilityGate>
+        </FeatureGate>
       </main>
     </div>
   );

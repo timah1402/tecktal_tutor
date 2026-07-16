@@ -67,6 +67,7 @@ import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
 import { useVoiceCall } from "@/context/VoiceCallContext";
 import { getAccentForIndex } from "@/lib/quick-action-colors";
 import type { Capability } from "@/lib/capability-routes";
+import { isRouteEnabled } from "@/lib/features";
 import type { SessionSummary } from "@/lib/session-api";
 
 // Matches HeroQuickActions' SPRING/ChatComposer's DOCK_SPRING exactly — all
@@ -94,17 +95,31 @@ export interface QuickActionEntry {
 // nav surfaces can't silently drift apart. Exported so HeroQuickActions (the
 // home page's empty-state hero grid) renders the exact same tile data
 // instead of a second, driftable copy.
+//
+// Individual tiles are named consts (rather than indexing into the array)
+// so QUICK_ACTION_TILES/STRIP_NAV_TILES below can reference them safely even
+// after NAV_TILES is filtered by feature flag (lib/features.ts).
+const HOME_TILE: QuickActionEntry = { href: "/home", label: "Home", icon: House, tooltipKey: "Home tooltip", requires: "llm" };
+const PARTNERS_TILE: QuickActionEntry = { href: "/partners", label: "Partners", icon: HeartHandshake, tooltipKey: "Partners tooltip", requires: "llm" };
+const AGENTS_TILE: QuickActionEntry = { href: "/agents", label: "My Agents", icon: Bot, tooltipKey: "Agents tooltip" };
+const COWRITER_TILE: QuickActionEntry = { href: "/co-writer", label: "Co-Writer", icon: PenLine, tooltipKey: "Co-Writer tooltip", requires: "llm" };
+const BOOK_TILE: QuickActionEntry = { href: "/book", label: "Book", icon: Library, tooltipKey: "Book tooltip", requires: "llm" };
+const SPACE_TILE: QuickActionEntry = { href: "/space", label: "Learning Space", icon: LayoutGrid, tooltipKey: "Space tooltip" };
+const MEMORY_TILE: QuickActionEntry = { href: "/memory", label: "Memory", icon: Brain, tooltipKey: "Memory tooltip" };
+const KNOWLEDGE_TILE: QuickActionEntry = { href: "/knowledge", label: "Knowledge Center", icon: BookOpen, tooltipKey: "Knowledge tooltip" };
+const SETTINGS_TILE: QuickActionEntry = { href: "/settings", label: "Settings", icon: Settings };
+
 export const NAV_TILES: QuickActionEntry[] = [
-  { href: "/home", label: "Home", icon: House, tooltipKey: "Home tooltip", requires: "llm" },
-  { href: "/partners", label: "Partners", icon: HeartHandshake, tooltipKey: "Partners tooltip", requires: "llm" },
-  { href: "/agents", label: "My Agents", icon: Bot, tooltipKey: "Agents tooltip" },
-  { href: "/co-writer", label: "Co-Writer", icon: PenLine, tooltipKey: "Co-Writer tooltip", requires: "llm" },
-  { href: "/book", label: "Book", icon: Library, tooltipKey: "Book tooltip", requires: "llm" },
-  { href: "/space", label: "Learning Space", icon: LayoutGrid, tooltipKey: "Space tooltip" },
-  { href: "/memory", label: "Memory", icon: Brain, tooltipKey: "Memory tooltip" },
-  { href: "/knowledge", label: "Knowledge Center", icon: BookOpen, tooltipKey: "Knowledge tooltip" },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+  HOME_TILE,
+  PARTNERS_TILE,
+  AGENTS_TILE,
+  COWRITER_TILE,
+  BOOK_TILE,
+  SPACE_TILE,
+  MEMORY_TILE,
+  KNOWLEDGE_TILE,
+  SETTINGS_TILE,
+].filter((tile) => isRouteEnabled(tile.href));
 
 // Chat capabilities — mirrors the CAPABILITIES array in the /home composer
 // (value, label, icon). Linking to ?capability=X covers navigating in from
@@ -124,17 +139,17 @@ export const CAPABILITY_TILES: QuickActionEntry[] = [
 // (alongside NAV_TILES/CAPABILITY_TILES above) so HeroQuickActions renders
 // the identical combined list instead of a second, driftable copy.
 export const QUICK_ACTION_TILES: QuickActionEntry[] = [
-  NAV_TILES[0], // Home
+  HOME_TILE,
   ...CAPABILITY_TILES, // Chat, Quiz, Research, Solve, Visualize, Mastery Path
-  NAV_TILES[3], // Co-Writer
-  NAV_TILES[1], // Partners
-  NAV_TILES[2], // My Agents
-  NAV_TILES[4], // Book
-  NAV_TILES[5], // Learning Space
-  NAV_TILES[6], // Memory
-  NAV_TILES[7], // Knowledge Center
-  NAV_TILES[8], // Settings
-];
+  COWRITER_TILE,
+  PARTNERS_TILE,
+  AGENTS_TILE,
+  BOOK_TILE,
+  SPACE_TILE,
+  MEMORY_TILE,
+  KNOWLEDGE_TILE,
+  SETTINGS_TILE,
+].filter((tile) => isRouteEnabled(tile.href));
 
 // Chat ("") is the dock's neutral/no-selection state, not a tile of its own
 // — mirrors the identical filter in HeroQuickActions.
@@ -301,7 +316,7 @@ function StripIcon({
   const accent = getAccentForIndex(index);
   const label = t(entry.label);
 
-  const className = `flex h-16 w-16 shrink-0 items-center justify-center rounded-full border transition-colors duration-150 ${
+  const className = `flex h-20 w-20 shrink-0 items-center justify-center rounded-full border transition-colors duration-150 ${
     active
       ? "border-[var(--primary)]/45 bg-[var(--card)] shadow-sm ring-1 ring-[var(--primary)]/20"
       : "border-[var(--border)]/55 bg-[var(--card)] hover:border-[var(--primary)]/30 hover:shadow-sm"
@@ -309,7 +324,7 @@ function StripIcon({
 
   const icon = (
     <entry.icon
-      size={26}
+      size={32}
       strokeWidth={1.8}
       style={{ color: locked ? "var(--muted-foreground)" : accent.icon }}
     />
@@ -496,7 +511,7 @@ export function QuickActionsPanel({
             aria-label={t("Record voice")}
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.96 }}
-            className={`flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-[5px] transition-colors duration-150 ${
+            className={`flex h-[120px] w-[120px] shrink-0 items-center justify-center rounded-full border-[5px] transition-colors duration-150 ${
               speaking
                 ? "border-[var(--primary)]/60 bg-[var(--primary)]/10 animate-pulse"
                 : callActive || connecting
@@ -505,11 +520,11 @@ export function QuickActionsPanel({
             }`}
           >
             {connecting ? (
-              <Loader2 size={34} strokeWidth={1.5} className="animate-spin text-[var(--primary)]" />
+              <Loader2 size={42} strokeWidth={1.5} className="animate-spin text-[var(--primary)]" />
             ) : speaking ? (
-              <Volume2 size={34} strokeWidth={1.5} className="text-[var(--primary)]" />
+              <Volume2 size={42} strokeWidth={1.5} className="text-[var(--primary)]" />
             ) : (
-              <Mic size={34} strokeWidth={1.5} className={callActive ? "text-red-500" : "text-[var(--primary)]"} />
+              <Mic size={42} strokeWidth={1.5} className={callActive ? "text-red-500" : "text-[var(--primary)]"} />
             )}
           </motion.button>
 

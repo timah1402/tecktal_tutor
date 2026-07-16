@@ -466,16 +466,25 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         return state;
       }
       const events = [...(last?.events || []), action.event];
+      const capability = last?.capability || session.activeCapability || "";
       let content = last?.content || "";
       if (isNarrationMarker(action.event)) {
         // A round just resolved as narration (preamble before a tool call):
-        // drop its already-streamed text from the answer — it stays in the
-        // trace. Recomputing is cheap here (only fires per narration round).
-        content = recomputeAnswerContent(events);
+        // normally drop its already-streamed text from the answer — it
+        // stays in the trace. Recomputing is cheap here (only fires per
+        // narration round). Deep Solve is the exception: its steps are
+        // deliberately written as narration rounds (explanation, then the
+        // step's tool calls) so the walkthrough appears live, step by step,
+        // instead of arriving all at once with the final round — so its
+        // narration text is kept rather than stripped back out.
+        if (capability !== "deep_solve") {
+          content = recomputeAnswerContent(events);
+        } else if (shouldAppendEventContent(action.event)) {
+          content += action.event.content;
+        }
       } else if (shouldAppendEventContent(action.event)) {
         content += action.event.content;
       }
-      const capability = last?.capability || session.activeCapability || "";
       msgs[msgs.length - 1] = {
         ...(last || { role: "assistant", content: "" }),
         content,

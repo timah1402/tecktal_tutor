@@ -49,6 +49,7 @@ import AgentSelector from "./AgentSelector";
 import KnowledgeSelector from "./KnowledgeSelector";
 import ModelSelector from "./ModelSelector";
 import PersonaSelector from "./PersonaSelector";
+import { OPEN_FILE_PICKER_EVENT } from "@/context/app-shell-storage";
 
 type SpaceSelectionCounts = {
   attachments: number;
@@ -386,6 +387,17 @@ export default memo(function ChatComposer({
   const handlePickFiles = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  // Voice-triggered upload (the open_upload tool, see VoiceCallContext.tsx)
+  // — opens the exact same OS file picker as clicking the attach button.
+  useEffect(() => {
+    function onOpenFilePicker() {
+      handlePickFiles();
+    }
+    window.addEventListener(OPEN_FILE_PICKER_EVENT, onOpenFilePicker);
+    return () =>
+      window.removeEventListener(OPEN_FILE_PICKER_EVENT, onOpenFilePicker);
+  }, [handlePickFiles]);
 
   const handleFileInputChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
