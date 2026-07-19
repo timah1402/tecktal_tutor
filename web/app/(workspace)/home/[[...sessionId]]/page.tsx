@@ -64,6 +64,8 @@ import { useVoiceCall } from "@/context/VoiceCallContext";
 import {
   CAPABILITY_SELECT_EVENT,
   VOICE_TRANSCRIPT_EVENT,
+  OPEN_SAVE_TO_NOTEBOOK_EVENT,
+  VIEWER_PANEL_EVENT,
 } from "@/context/app-shell-storage";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
@@ -903,10 +905,12 @@ export default function ChatPage() {
   const chatSavePayload = useMemo(() => {
     if (!state.messages.length) return null;
     const title =
+      state.sessionTitle.trim() ||
       state.messages
         .find((msg) => msg.role === "user")
         ?.content.trim()
-        .slice(0, 80) || "Chat Session";
+        .slice(0, 80) ||
+      "Chat Session";
     return {
       recordType: "chat" as const,
       title,
@@ -923,7 +927,13 @@ export default function ChatPage() {
         total_message_count: state.messages.length,
       },
     };
-  }, [state.activeCapability, state.language, state.messages, state.sessionId]);
+  }, [
+    state.activeCapability,
+    state.language,
+    state.messages,
+    state.sessionId,
+    state.sessionTitle,
+  ]);
   const lastMessage = state.messages[state.messages.length - 1];
   const {
     containerRef: messagesContainerRef,
@@ -1629,9 +1639,23 @@ export default function ChatPage() {
       hasPendingAttachments: () => attachments.length > 0,
       send: (text: string, configOverride?: Record<string, unknown>) =>
         void handleSend(text, configOverride),
+      // attach_book_reference / attach_question_bank_entry voice tools
+      // (see VoiceCallContext.tsx) — append the voice-resolved reference
+      // the same way handleApplyBookReferences/handleApplyQuestionEntries
+      // commit a picker's selection, without going through the picker UI.
+      attachBookReference: (reference: SelectedBookReference) =>
+        setSelectedBookReferences((prev) => [...prev, reference]),
+      attachQuestionEntry: (entry: SelectedQuestionEntry) =>
+        setSelectedQuestionEntries((prev) => [...prev, entry]),
+      // remove_attachment voice tool — mirrors the composer's own remove
+      // button (removeAttachment(index)) / clears the tray entirely.
+      removeLastAttachment: () => {
+        if (attachments.length > 0) removeAttachment(attachments.length - 1);
+      },
+      clearAttachments: () => setAttachments([]),
     });
     return () => voiceCall.registerComposerBridge(null);
-  }, [voiceCall, handleSend, attachments]);
+  }, [voiceCall, handleSend, attachments, removeAttachment]);
 
   const handleConfirmOutline = useCallback(
     (
@@ -1857,15 +1881,45 @@ export default function ChatPage() {
     setShowSaveModal(false);
   }, []);
 
+  // open_save_to_notebook / toggle_viewer_panel voice tools (see
+  // VoiceCallContext.tsx) — page-local state with no context, so they reach
+  // this page the same way show_more/show_less already reach HeroQuickActions.
+  useEffect(() => {
+    function onOpenSaveToNotebook() {
+      setShowSaveModal(true);
+    }
+    window.addEventListener(
+      OPEN_SAVE_TO_NOTEBOOK_EVENT,
+      onOpenSaveToNotebook,
+    );
+    return () =>
+      window.removeEventListener(
+        OPEN_SAVE_TO_NOTEBOOK_EVENT,
+        onOpenSaveToNotebook,
+      );
+  }, []);
+
+  useEffect(() => {
+    function onViewerPanel(event: Event) {
+      const open = (event as CustomEvent<{ open?: boolean }>).detail?.open;
+      if (typeof open === "boolean") setViewerOpen(open);
+      else toggleViewerPanel();
+    }
+    window.addEventListener(VIEWER_PANEL_EVENT, onViewerPanel);
+    return () => window.removeEventListener(VIEWER_PANEL_EVENT, onViewerPanel);
+  }, [setViewerOpen, toggleViewerPanel]);
+
   const handleDownloadMarkdown = useCallback(() => {
     if (!state.messages.length) return;
     const title =
+      state.sessionTitle.trim() ||
       state.messages
         .find((msg) => msg.role === "user")
         ?.content.trim()
-        .slice(0, 80) || "Chat Session";
+        .slice(0, 80) ||
+      "Chat Session";
     downloadChatMarkdown(state.messages, { title });
-  }, [state.messages]);
+  }, [state.messages, state.sessionTitle]);
 
   return (
     <QuizFollowupProvider>

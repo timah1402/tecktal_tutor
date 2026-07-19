@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   Plus,
@@ -11,6 +11,18 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { OutlineItem } from "@/lib/research-types";
+import {
+  RESEARCH_OUTLINE_ACTION_EVENT,
+  type ResearchOutlineAction,
+  type ResearchOutlineActionPayload,
+  dispatchUiContext,
+} from "@/context/app-shell-storage";
+
+// Tracks the most-recently-mounted ResearchOutlineEditor instance so a
+// voice-triggered outline edit (dispatched globally, with no idea which
+// outline is "current") only acts on the one the user is actually looking
+// at — same pattern as QuizViewer's activeQuizInstanceId.
+let activeOutlineInstanceId = 0;
 
 type OutlineStatus = "editing" | "researching" | "done";
 
@@ -36,6 +48,12 @@ export default function ResearchOutlineEditor({
   // status-change re-renders don't keep slamming the card closed.
   const [collapsed, setCollapsed] = useState(false);
   const [userToggled, setUserToggled] = useState(false);
+  const instanceIdRef = useRef(0);
+
+  useEffect(() => {
+    activeOutlineInstanceId += 1;
+    instanceIdRef.current = activeOutlineInstanceId;
+  }, []);
 
   const locked =
     externalStatus === "researching" ||
@@ -75,6 +93,97 @@ export default function ResearchOutlineEditor({
     setLocalConfirmed(true);
     onConfirm(valid);
   }, [items, onConfirm]);
+
+  // Voice-triggered outline editing (research_* tools, see
+  // VoiceCallContext.tsx) — only the currently-active instance reacts.
+  // toggle_collapse is only meaningful once locked (mirrors headerClickable
+  // below) so it's not gated on `!locked` like the editing actions are.
+  useEffect(() => {
+    function onOutlineAction(event: Event) {
+      if (instanceIdRef.current !== activeOutlineInstanceId) return;
+      const detail = (
+        event as CustomEvent<{
+          action: ResearchOutlineAction;
+          payload?: ResearchOutlineActionPayload;
+        }>
+      ).detail;
+      switch (detail?.action) {
+        case "toggle_collapse": {
+          const requested = detail.payload?.collapsed;
+          if (typeof requested === "boolean") {
+            if (!locked) break;
+            setUserToggled(true);
+            setCollapsed(requested);
+          } else {
+            toggleCollapsed();
+          }
+          break;
+        }
+        case "confirm":
+          if (!locked) handleConfirm();
+          break;
+        case "remove_item": {
+          if (locked) break;
+          const index = detail.payload?.index;
+          if (typeof index === "number" && index >= 1) removeItem(index - 1);
+          break;
+        }
+        case "add_item": {
+          if (locked) break;
+          const title = detail.payload?.title?.trim();
+          if (!title) break;
+          setItems((prev) => [
+            ...prev,
+            { title, overview: detail.payload?.overview ?? "" },
+          ]);
+          break;
+        }
+        case "edit_item": {
+          if (locked) break;
+          const index = detail.payload?.index;
+          if (typeof index !== "number" || index < 1) break;
+          const i = index - 1;
+          if (detail.payload?.title !== undefined) {
+            updateItem(i, "title", detail.payload.title);
+          }
+          if (detail.payload?.overview !== undefined) {
+            updateItem(i, "overview", detail.payload.overview);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    window.addEventListener(RESEARCH_OUTLINE_ACTION_EVENT, onOutlineAction);
+    return () =>
+      window.removeEventListener(
+        RESEARCH_OUTLINE_ACTION_EVENT,
+        onOutlineAction,
+      );
+  }, [handleConfirm, locked, removeItem, toggleCollapsed, updateItem]);
+
+  // Ground the realtime voice model in the fact that this outline is on
+  // screen (see UI_CONTEXT_EVENT's doc comment in app-shell-storage.ts) —
+  // otherwise "add a section on X" has nothing to act on. Only while still
+  // editable (not yet confirmed) since the voice tools only apply then.
+  useEffect(() => {
+    if (instanceIdRef.current !== activeOutlineInstanceId) return;
+    if (locked) return;
+    const titles = items
+      .map((item, i) => `${i + 1}. ${item.title || "(untitled)"}`)
+      .join("; ");
+    dispatchUiContext(
+      `A research outline for "${topic}" is currently open for review on ` +
+        `screen, with ${items.length} section(s): ${titles}. The user can ` +
+        `shape THIS outline by voice using research_add_outline_item, ` +
+        `research_remove_outline_item, research_edit_outline_item (all by ` +
+        `1-based position), and research_confirm_outline to proceed — do ` +
+        `NOT start a new research request (switch_capability) for requests ` +
+        `about this outline; only do that if the user clearly asks for a ` +
+        `different/new research topic.`,
+    );
+  }, [items, locked, topic]);
 
   const validItems = locked
     ? initialOutline.filter((i) => i.title.trim())

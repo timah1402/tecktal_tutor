@@ -392,13 +392,14 @@ const AssistantMessage = memo(function AssistantMessage({
           ("DeepTutor Exploring… · 8s" → "DeepTutor responded. · 10s") with
           the exploring trace nested beneath it — expanded while DeepTutor is
           still working, collapsed once it settles into the final answer.
-          Skipped for Deep Solve: its plan/step tool calls (solve_plan,
-          solve_finish_step) are internal bookkeeping, not something a
-          learner should have to parse — they should just see the
-          step-by-step resolution stream in directly (paired with the
-          spoken narration in voice mode), not a trace of the tool calls
-          that produced it. */}
-      {msg.capability !== "deep_solve" && (
+          Skipped for Deep Solve and Deep Question (quiz): their planning/
+          step tool calls (solve_plan, solve_finish_step, the quiz template
+          plan) are internal bookkeeping, not something a learner should
+          have to parse — they should just see the step-by-step resolution
+          or the finished quiz stream in directly (paired with the spoken
+          narration in voice mode), not a trace of the tool calls that
+          produced it. */}
+      {msg.capability !== "deep_solve" && msg.capability !== "deep_question" && (
         <AssistantActivity
           events={events}
           isStreaming={isStreaming}

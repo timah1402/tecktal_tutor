@@ -36,6 +36,8 @@ import {
 import {
   QUIZ_SESSION_ACTION_EVENT,
   type QuizSessionAction,
+  type QuizSessionActionPayload,
+  dispatchUiContext,
 } from "@/context/app-shell-storage";
 import {
   isChoiceQuizQuestion,
@@ -438,6 +440,34 @@ export default function QuizViewer({
     setCategoryBusy(false);
   }, [entryIds, idx, newCategoryName, q]);
 
+  // Voice-triggered category filing (quiz_add_to_category) — resolves the
+  // spoken name against the existing category list (case-insensitively)
+  // instead of relying on the dropdown having been opened first, and
+  // creates the category if nothing matches, mirroring handleCreateAndAdd
+  // but parameterized by name instead of reading `newCategoryName` state.
+  const handleVoiceAddToCategory = useCallback(
+    async (categoryName: string) => {
+      if (!q) return;
+      const trimmed = categoryName.trim();
+      if (!trimmed) return;
+      const key = getQuestionKey(q, idx);
+      const eId = entryIds[key];
+      if (!eId) return;
+      try {
+        const cats = await listCategories();
+        setCategories(cats);
+        const match = cats.find(
+          (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase(),
+        );
+        const target = match ?? (await createCategory(trimmed));
+        await addEntryToCategory(eId, target.id);
+      } catch {
+        /* best-effort */
+      }
+    },
+    [entryIds, idx, q],
+  );
+
   const isChoice = q ? isMultipleChoice(q) : false;
   const isConcept = q ? isConceptQuizQuestion(q.question_type) : false;
   const isFillBlank = q ? isFillInBlankQuizQuestion(q.question_type) : false;
@@ -569,26 +599,6 @@ export default function QuizViewer({
       );
     }
   }, [sessionSavePayload, t]);
-
-  // Voice-triggered save/download (save_quiz_to_notebook / download_quiz
-  // tools, see VoiceCallContext.tsx) — only the currently-active instance
-  // reacts, so an earlier quiz still mounted in scroll-back history doesn't
-  // also fire.
-  useEffect(() => {
-    function onQuizSessionAction(event: Event) {
-      if (instanceIdRef.current !== activeQuizInstanceId) return;
-      const action = (event as CustomEvent<{ action: QuizSessionAction }>)
-        .detail?.action;
-      if (action === "save") void handleVoiceSaveSession();
-      else if (action === "download") handleDownloadSession();
-    }
-    window.addEventListener(QUIZ_SESSION_ACTION_EVENT, onQuizSessionAction);
-    return () =>
-      window.removeEventListener(
-        QUIZ_SESSION_ACTION_EVENT,
-        onQuizSessionAction,
-      );
-  }, [handleDownloadSession, handleVoiceSaveSession]);
 
   useEffect(() => {
     if (!sessionId || total === 0 || completedCount !== total) return;
@@ -852,6 +862,7 @@ export default function QuizViewer({
     judgeHandlesRef.current.set(idx, handle);
   }, [answers, entryIds, idx, language, q]);
 
+
   const handleToggleAnswerView = useCallback(
     (view: AnswerView) => {
       setAnswerViews((prev) => ({ ...prev, [idx]: view }));
@@ -906,6 +917,128 @@ export default function QuizViewer({
     sessionId,
     t,
   ]);
+
+  // Voice-triggered quiz interaction (save_quiz_to_notebook / download_quiz
+  // / quiz_* tools, see VoiceCallContext.tsx) — only the currently-active
+  // instance reacts, so an earlier quiz still mounted in scroll-back
+  // history doesn't also fire. Placed after every handler it calls
+  // (including handleSubmit/handleReset, plain per-render closures not
+  // useCallback) so this effect's dependency array never references
+  // something not yet declared.
+  useEffect(() => {
+    function onQuizSessionAction(event: Event) {
+      if (instanceIdRef.current !== activeQuizInstanceId) return;
+      const detail = (
+        event as CustomEvent<{
+          action: QuizSessionAction;
+          payload?: QuizSessionActionPayload;
+        }>
+      ).detail;
+      const action = detail?.action;
+      const payload = detail?.payload;
+      switch (action) {
+        case "save":
+          void handleVoiceSaveSession();
+          break;
+        case "download":
+          handleDownloadSession();
+          break;
+        case "answer":
+          if (payload?.option) updateAnswer({ selected: payload.option });
+          if (payload?.text) updateAnswer({ typed: payload.text });
+          break;
+        case "navigate":
+          if (typeof payload?.index === "number" && payload.index > 0) {
+            setIdx(Math.min(total - 1, Math.max(0, payload.index - 1)));
+          } else if (payload?.direction === "previous") {
+            setIdx((value) => Math.max(0, value - 1));
+          } else if (payload?.direction === "next") {
+            setIdx((value) => Math.min(total - 1, value + 1));
+          }
+          break;
+        case "submit":
+          handleSubmit();
+          break;
+        case "reset":
+          handleReset();
+          break;
+        case "judge":
+          handleAiJudge();
+          break;
+        case "bookmark":
+          void handleToggleBookmark();
+          break;
+        case "add_to_category":
+          if (payload?.categoryName) {
+            void handleVoiceAddToCategory(payload.categoryName);
+          }
+          break;
+        case "set_answer_view":
+          if (payload?.view) handleToggleAnswerView(payload.view);
+          break;
+        case "toggle_review_collapse":
+          setReviewCollapsed((prev) => ({
+            ...prev,
+            [idx]:
+              typeof payload?.collapsed === "boolean"
+                ? payload.collapsed
+                : !(prev[idx] === true),
+          }));
+          break;
+        case "open_followup":
+          handleOpenFollowup();
+          break;
+        default:
+          break;
+      }
+    }
+    window.addEventListener(QUIZ_SESSION_ACTION_EVENT, onQuizSessionAction);
+    return () =>
+      window.removeEventListener(
+        QUIZ_SESSION_ACTION_EVENT,
+        onQuizSessionAction,
+      );
+  }, [
+    handleDownloadSession,
+    handleVoiceSaveSession,
+    handleToggleBookmark,
+    handleVoiceAddToCategory,
+    handleAiJudge,
+    handleToggleAnswerView,
+    handleOpenFollowup,
+    updateAnswer,
+    total,
+    idx,
+    // handleSubmit/handleReset are plain per-render closures (not
+    // useCallback) bound to the current idx/q/ans — included so the
+    // listener re-subscribes with a fresh closure every render instead of
+    // acting on a stale question index.
+    handleSubmit,
+    handleReset,
+  ]);
+
+  // Ground the realtime voice model in the fact that this quiz is on
+  // screen (see UI_CONTEXT_EVENT's doc comment in app-shell-storage.ts) —
+  // otherwise "answer B" / "complete the quiz" has nothing to act on and
+  // the model just starts a brand-new quiz in chat instead. Only the
+  // active instance announces itself, and re-announces on every question
+  // change so the model always knows which question is actually visible.
+  useEffect(() => {
+    if (instanceIdRef.current !== activeQuizInstanceId) return;
+    if (!q) return;
+    dispatchUiContext(
+      `A quiz is currently open on screen: question ${idx + 1} of ${total} ` +
+        `(${q.difficulty || "unspecified difficulty"}, ${q.question_type}): ` +
+        `"${q.question}". The user can interact with THIS quiz by voice ` +
+        `using quiz_answer, quiz_navigate, quiz_submit_answer, ` +
+        `quiz_reset_answer, quiz_request_judging, quiz_toggle_bookmark, ` +
+        `quiz_add_to_category, quiz_set_answer_view, quiz_toggle_review, ` +
+        `quiz_open_followup, save_quiz_to_notebook, download_quiz — do NOT ` +
+        `start a new quiz (switch_capability) or write a duplicate quiz in ` +
+        `chat for requests about this one; only call switch_capability(quiz) ` +
+        `if the user clearly asks for a different/new quiz on another topic.`,
+    );
+  }, [idx, q, total]);
 
   if (!q) return null;
 

@@ -91,17 +91,151 @@ export function dispatchVoiceTranscript(text: string): void {
   );
 }
 
-// Fired by VoiceCallContext's save_quiz_to_notebook / download_quiz tool
-// handlers. The most-recently-mounted QuizViewer (there's normally exactly
-// one visible) is the only listener that acts on it — see QuizViewer's own
-// "active instance" tracking. No-op (silently ignored) when no quiz is open.
+// Fired by VoiceCallContext's save_quiz_to_notebook / download_quiz / quiz_*
+// tool handlers. The most-recently-mounted QuizViewer (there's normally
+// exactly one visible) is the only listener that acts on it — see
+// QuizViewer's own "active instance" tracking. No-op (silently ignored) when
+// no quiz is open.
 export const QUIZ_SESSION_ACTION_EVENT = "deeptutor:quiz-session-action";
-export type QuizSessionAction = "save" | "download";
+export type QuizSessionAction =
+  | "save"
+  | "download"
+  | "answer"
+  | "navigate"
+  | "submit"
+  | "reset"
+  | "judge"
+  | "bookmark"
+  | "add_to_category"
+  | "set_answer_view"
+  | "toggle_review_collapse"
+  | "open_followup";
 
-export function dispatchQuizSessionAction(action: QuizSessionAction): void {
+export interface QuizSessionActionPayload {
+  option?: string;
+  text?: string;
+  direction?: "previous" | "next";
+  /** 1-based question number, as the user said it. */
+  index?: number;
+  categoryName?: string;
+  /** set_answer_view only. */
+  view?: "reference" | "judgment";
+  /** toggle_review_collapse only — omitted means "toggle current state". */
+  collapsed?: boolean;
+}
+
+export function dispatchQuizSessionAction(
+  action: QuizSessionAction,
+  payload?: QuizSessionActionPayload,
+): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
-    new CustomEvent(QUIZ_SESSION_ACTION_EVENT, { detail: { action } }),
+    new CustomEvent(QUIZ_SESSION_ACTION_EVENT, { detail: { action, payload } }),
+  );
+}
+
+// Fired by VoiceCallContext's open_save_to_notebook tool handler so the home
+// page can open its existing "save chat to notebook" modal. No-op if the
+// page isn't mounted. Transient signal, not persisted.
+export const OPEN_SAVE_TO_NOTEBOOK_EVENT = "deeptutor:open-save-to-notebook";
+
+export function dispatchOpenSaveToNotebook(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(OPEN_SAVE_TO_NOTEBOOK_EVENT));
+}
+
+// Fired by VoiceCallContext's toggle_viewer_panel tool handler. `open`
+// omitted means "toggle current state". Transient signal, not persisted.
+export const VIEWER_PANEL_EVENT = "deeptutor:viewer-panel";
+
+export function dispatchViewerPanel(open?: boolean): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(VIEWER_PANEL_EVENT, { detail: { open } }),
+  );
+}
+
+// Fired by VoiceCallContext's research_* tool handlers. Only the
+// most-recently-mounted ResearchOutlineEditor reacts — same "active
+// instance" pattern as quiz. No-op when no outline is open for review.
+export const RESEARCH_OUTLINE_ACTION_EVENT = "deeptutor:research-outline-action";
+export type ResearchOutlineAction =
+  | "confirm"
+  | "remove_item"
+  | "add_item"
+  | "edit_item"
+  | "toggle_collapse";
+
+export interface ResearchOutlineActionPayload {
+  /** 1-based position, as the user said it. */
+  index?: number;
+  title?: string;
+  overview?: string;
+  /** toggle_collapse only — omitted means "toggle current state". */
+  collapsed?: boolean;
+}
+
+export function dispatchResearchOutlineAction(
+  action: ResearchOutlineAction,
+  payload?: ResearchOutlineActionPayload,
+): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(RESEARCH_OUTLINE_ACTION_EVENT, {
+      detail: { action, payload },
+    }),
+  );
+}
+
+// Fired by VoiceCallContext's visualize_* tool handlers. Only the
+// most-recently-mounted VisualizationViewer reacts — same "active instance"
+// pattern as quiz. No-op when no visualization is open.
+export const VISUALIZE_ACTION_EVENT = "deeptutor:visualize-action";
+export type VisualizeAction = "fullscreen" | "show_code" | "copy_code";
+
+export interface VisualizeActionPayload {
+  enter?: boolean;
+  show?: boolean;
+}
+
+export function dispatchVisualizeAction(
+  action: VisualizeAction,
+  payload?: VisualizeActionPayload,
+): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(VISUALIZE_ACTION_EVENT, { detail: { action, payload } }),
+  );
+}
+
+// Fired by VoiceCallContext's mastery_path_redo / mastery_path_delete tool
+// handlers, after the API mutation already succeeded, so an already-open
+// learning-space page re-fetches its list/detail. Best-effort — a no-op if
+// that page isn't mounted, since the mutation itself doesn't depend on it.
+export const MASTERY_PATH_REFRESH_EVENT = "deeptutor:mastery-path-refresh";
+
+export function dispatchMasteryPathRefresh(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(MASTERY_PATH_REFRESH_EVENT));
+}
+
+// Fired BY QuizViewer/ResearchOutlineEditor/VisualizationViewer (the
+// reverse direction from the events above) whenever one becomes the active
+// instance or its visible state changes, so VoiceCallContext can ground the
+// realtime model in what's actually on screen — otherwise voice has no way
+// to know a quiz/outline/visualization is currently open at all, and
+// commands like "answer B" or "complete the quiz" get treated as a request
+// to start something new instead of acting on what's visible. Carries a
+// plain-language summary already worded for injection into the model's
+// context, not structured data — keeps the wording/grounding logic in one
+// place (the component itself, which knows its own state) rather than
+// duplicated in VoiceCallContext.
+export const UI_CONTEXT_EVENT = "deeptutor:ui-context";
+
+export function dispatchUiContext(summary: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(UI_CONTEXT_EVENT, { detail: { summary } }),
   );
 }
 

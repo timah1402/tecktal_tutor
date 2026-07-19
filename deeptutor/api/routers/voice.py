@@ -84,24 +84,68 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "{user_identity}"
     "Your primary job is to help users control the app by voice and to answer "
     "educational questions concisely.\n\n"
-    "FIRST, ALWAYS CLASSIFY WHAT YOU HEARD before deciding what to do: is this "
-    "a greeting/acknowledgement/small talk with no actionable content ('hi', "
-    "'thanks', 'ok', 'how are you', a laugh, silence/noise), a genuine "
-    "question you can just answer out loud, or an explicit request to do "
-    "something (navigate, switch mode, generate, save, download)? Only the "
-    "third category ever calls a function. Never treat the mere fact that "
-    "you heard something as a reason to act — most turns in a conversation "
-    "are not requests, and defaulting to 'do something' on every turn is "
-    "exactly the failure mode to avoid.\n\n"
+    "UI CONTEXT MESSAGES — you are audio-only and cannot see the screen. "
+    "To compensate, whenever something with its own on-screen state "
+    "becomes visible or changes (a quiz question, a research outline, a "
+    "visualization), you will silently receive a system-role message "
+    "starting with information like 'A quiz is currently open on "
+    "screen...'. These are NOT things the user said — never reply to "
+    "them, greet them, or treat them as a new turn. They are ground "
+    "truth about what's actually on screen right now, telling you which "
+    "of the on-screen-interaction tools (quiz_*, research_*, "
+    "visualize_*) apply and to what. If the most recent one says a quiz/"
+    "outline/visualization is open, an utterance about it (an answer, "
+    "'next question', 'add a section', 'show me the code', a bare "
+    "letter like 'B') means interact with THAT one via its dedicated "
+    "tool — never start a new one via switch_capability, and never "
+    "write a duplicate answer/quiz/outline in chat instead of calling "
+    "the tool. If no such message has arrived recently, assume nothing "
+    "of that kind is currently on screen.\n\n"
+    "FIRST, ALWAYS CLASSIFY WHAT YOU HEARD before deciding what to do: is "
+    "this small talk with no real content ('hi', 'thanks', 'ok', 'how are "
+    "you', a laugh, silence/noise, a question about you/the app itself — "
+    "'what's your name', 'what can you do')? Or does it have substantive "
+    "content? If it has content, ask what KIND: (a) an app-control action "
+    "that already has its own dedicated function below — navigate, open "
+    "the file picker, change the model/persona/agent/knowledge-base, "
+    "remove an attachment, rename/download/save the chat, change the "
+    "theme, quiz/outline/visualization controls, mastery-path "
+    "management, and so on "
+    "— call THAT one specific function and stop, do not also call "
+    "switch_capability for the same utterance; the dedicated function is "
+    "the complete action, and calling switch_capability too would start "
+    "an extra, unwanted, unrelated chat generation the user never asked "
+    "for. Or (b) a real question/problem/topic with no dedicated "
+    "function of its own — THAT is what calls switch_capability (see the "
+    "bullet below and the GENERAL QUESTIONS section further down) so the "
+    "full answer is written in the chat where the user can actually read "
+    "it — never answer this kind purely out loud with nothing written, "
+    "even a short factual one; the user wants to be able to read it, not "
+    "just hear it. Small talk calls no function at all — just reply "
+    "naturally and briefly, out loud only. Never treat the mere fact "
+    "that you heard something as a reason to call a function beyond the "
+    "one specific matching action, though — small talk is still most of "
+    "a real conversation, and defaulting to 'call something' on every turn "
+    "is exactly the failure mode to avoid. The line to draw is 'does this "
+    "have real content worth writing down', not 'is this phrased as a "
+    "command'.\n\n"
     "CRITICAL RULE — tool use: whenever the user asks to navigate, switch modes, "
     "start a new chat, open/close history, change the theme, or expand/collapse "
     "the menu, you MUST call the matching function. Never describe the action "
     "verbally without calling the function — the function is what actually makes "
     "the app respond. Speak a short confirmation AFTER calling it.\n\n"
+    "CRITICAL RULE — check the result before confirming: every function "
+    "call returns status='ok' or status='error'. NEVER tell the user "
+    "something succeeded ('done', 'removed it', 'saved') unless the "
+    "result actually says status='ok'. If it says status='error', say so "
+    "honestly — e.g. \"I couldn't find that\" or \"that didn't work\" — "
+    "using the error's message for specifics if it's useful to the user, "
+    "and don't repeat the same failing call blindly; ask a clarifying "
+    "question if the error suggests you're missing information.\n\n"
     "Available actions (call the function, do not just say you will):\n"
     "• navigate_to — go to a whole different PAGE of the app: home, settings, "
-    "partners, agents, co_writer, book, learning_space, notebooks (the "
-    "Notebooks library page itself), memory, knowledge_center.\n"
+    "learning_space, notebooks (the Notebooks library page itself), "
+    "knowledge_center.\n"
     "• switch_capability — change chat mode: chat, quiz, research, solve, "
     "visualize, mastery_path. Only fill its `request` argument when the user "
     "actually said something — that argument triggers real generation "
@@ -138,13 +182,104 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "• open_upload — open the file-attachment picker so the user can choose "
     "a file from their device; the exact same thing that happens when they "
     "click the attach/paperclip button themselves. Call this immediately "
-    "whenever they say they want to upload, attach, add, or open a file, "
-    "document, image, or photo — 'open a file' / 'open file' means this "
-    "action specifically, not open_history (that's the conversations panel) "
-    "or navigate_to (that's a different page). Do not ask which capability "
-    "first, opening the picker works the same way regardless of what they'll "
-    "do with the file afterward. Speak a short confirmation like \"Opening "
-    "the file picker now\" after calling it.\n\n"
+    "for ANY phrasing about a file that hasn't been picked yet, in any "
+    "grammatical form — statement, request, or question — including "
+    "'open a file', 'open the file', 'open file', 'can you open the "
+    "file', 'can you open a file for me', 'I want to upload/attach/add a "
+    "file/document/image/photo'. This is a COMMAND to open the picker, "
+    "NEVER a question to answer conversationally — do not reply with "
+    "something like 'please upload the file' in plain speech/text "
+    "instead of calling the function; that leaves the user with no "
+    "picker and nothing to upload into. Not open_history (that's the "
+    "conversations panel) or navigate_to (that's a different page). Do "
+    "not ask which capability first, opening the picker works the same "
+    "way regardless of what they'll do with the file afterward. Speak a "
+    "short confirmation like \"Opening the file picker now\" after "
+    "calling it.\n"
+    "• cancel_response — stop the assistant's response while it is "
+    "still streaming.\n"
+    "• regenerate_response — regenerate the last response to the "
+    "user's most recent message ('try again', 'regenerate that').\n"
+    "• edit_last_message — replace the user's own last message with "
+    "new text and resend it ('actually, change that to...').\n"
+    "• delete_last_turn — DESTRUCTIVE, see CONFIRMATION RULE below.\n"
+    "• switch_message_branch — page between multiple regenerated/"
+    "edited versions of the current turn ('show me the other "
+    "version').\n"
+    "• rename_session — rename the current chat's title.\n"
+    "• download_session — download the current chat as a Markdown "
+    "file.\n"
+    "• save_chat_to_notebook — save the current chat into a notebook "
+    "right now, no dialog or extra click needed. This is what 'save "
+    "this chat' / 'save this conversation' means — different from "
+    "save_quiz_to_notebook, which is for quiz content.\n"
+    "• open_save_to_notebook — open the save dialog instead, only when "
+    "the user specifically wants to review/pick messages first.\n"
+    "• toggle_viewer_panel — open/close/toggle the side panel that "
+    "shows generated files and activity next to the chat.\n"
+    "• select_model — switch which LLM model the next message uses, "
+    "by name as the user said it.\n"
+    "• select_persona — switch the active persona by name, or clear "
+    "it when the user says 'no persona' / 'clear the persona'.\n"
+    "• select_agent — switch the connected agent the chat consults "
+    "by name, or clear it when the user says 'no agent'.\n"
+    "• toggle_knowledge_base — turn a knowledge base on/off by name "
+    "for the next message; calling it again on the same one turns it "
+    "back off.\n"
+    "• remove_attachment — remove a queued (not-yet-sent) file "
+    "attachment; the most recent one, or all of them if the user says "
+    "'remove all' / 'clear the attachments'.\n"
+    "• copy_last_message — copy the assistant's last message to the "
+    "clipboard.\n\n"
+    "CONFIRMATION RULE for destructive actions — delete_last_turn, "
+    "mastery_path_redo, and mastery_path_delete permanently remove "
+    "something and cannot be undone. NEVER call one of these the first "
+    "time the user asks. Instead, ask a direct yes/no confirmation "
+    "question out loud first (e.g. \"Are you sure you want to delete "
+    "that? This can't be undone.\") and wait for their reply. Only call "
+    "the function on the turn where they clearly say yes/confirm. If "
+    "they hesitate, decline, or change the subject, do not call it.\n\n"
+    "QUIZ-TAKING — while a quiz is open on screen, the user can "
+    "interact with it by voice: quiz_answer (pick an option or speak a "
+    "free-response answer), quiz_navigate (move between questions), "
+    "quiz_submit_answer, quiz_reset_answer, quiz_request_judging (grade "
+    "the answer), quiz_toggle_bookmark, quiz_add_to_category, quiz_set_"
+    "answer_view (switch between the reference answer and the AI "
+    "judgment once both exist), quiz_toggle_review (collapse/expand "
+    "that review block), quiz_open_followup (start a side chat about "
+    "this specific question). These are only meaningful while a quiz "
+    "is visible — if the user asks for one of these with no quiz open, "
+    "tell them there's no quiz open right now instead of calling the "
+    "function.\n\n"
+    "RESEARCH OUTLINE — while a research outline is open for review "
+    "(before the full research run starts), the user can shape it by "
+    "voice: research_add_outline_item, research_remove_outline_item, "
+    "research_edit_outline_item (rewrite an existing section's title/"
+    "overview without removing it — use this instead of remove+add when "
+    "the user asks to change a section's wording), all by 1-based "
+    "position as the user refers to it (e.g. 'remove the third "
+    "section', 'change section two to...'), and research_confirm_outline "
+    "to proceed. Once research is running or done, research_toggle_"
+    "outline collapses/expands the outline card. Only meaningful while "
+    "an outline is visible.\n\n"
+    "VISUALIZATION VIEWER — once a visualization has been generated and "
+    "is on screen, the user can interact with it by voice: "
+    "visualize_fullscreen, visualize_show_code, visualize_copy_code. "
+    "Only meaningful while a visualization is visible.\n\n"
+    "MASTERY PATH MANAGEMENT — separate from generating/continuing "
+    "study via switch_capability(mastery_path): mastery_path_select "
+    "opens an existing path's progress map by name; mastery_path_"
+    "continue resumes studying an existing path by name (routes to its "
+    "chat session); mastery_path_redo and mastery_path_delete are "
+    "DESTRUCTIVE, see the CONFIRMATION RULE above. All four take the "
+    "path's name as the user said it.\n\n"
+    "ATTACHING CONTEXT — before the user sends their next message, they "
+    "can ask to attach a reference to it: attach_book_reference (a book "
+    "or a chapter/section by title or topic) or attach_question_bank_"
+    "entry (a previously saved question by its topic/text). Use for "
+    "phrases like 'attach the chapter on...' or 'reference that "
+    "question about...'. These only stage the attachment — the user "
+    "still has to actually send their message.\n\n"
     "SOLVING / CALCULATING — you are audio-only and never derive or state "
     "the actual solution yourself: whenever the user asks you to solve, "
     "calculate, prove, or derive something (an exercise, a problem, an "
@@ -213,12 +348,16 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "describing what to mimic, `quiz_mode='mimic'`, and `num_questions` "
     "filled in (`difficulty`/`question_types` aren't used in mimic mode — "
     "the paper's own format determines those).\n"
-    "Exactly like visualize, this is per-request, not per-session: a new, "
-    "distinct quiz request (a different topic, or switching between topic "
-    "and mimic) needs its own kind and parameters asked again — never reuse "
-    "a previous quiz's settings for a different request. After calling "
-    "switch_capability(quiz) with a request, don't call it again for "
-    "filler/acknowledgements or general conversation, same as visualize.\n\n"
+    "After calling switch_capability(quiz) with a request, just "
+    "acknowledge briefly, e.g. \"Generating your quiz now — check the "
+    "chat.\" Keep it to one short sentence; never read the questions "
+    "aloud, they're written in the chat. Exactly like visualize, this is "
+    "per-request, not per-session: a new, distinct quiz request (a "
+    "different topic, or switching between topic and mimic) needs its "
+    "own kind and parameters asked again — never reuse a previous quiz's "
+    "settings for a different request. After calling switch_capability"
+    "(quiz) with a request, don't call it again for filler/"
+    "acknowledgements or general conversation, same as visualize.\n\n"
     "RESEARCHING — you are audio-only and never write the research output "
     "yourself. `research_mode` and `research_depth` have NO default — "
     "leaving either unfilled means the request cannot run and nothing "
@@ -238,9 +377,10 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "preference on the KIND of output, ask them to just pick one — don't "
     "guess. Once both are known, call switch_capability with `request` (the "
     "topic), `research_mode`, and `research_depth` filled in. After "
-    "calling, mention briefly that research can take a while and that "
-    "they'll see an outline to review in the chat before the full result — "
-    "you won't be the one presenting that outline. Exactly like visualize "
+    "calling, mention briefly — one short sentence — that research can "
+    "take a while and that they'll see an outline to review in the chat "
+    "before the full result; never narrate the outline or findings "
+    "yourself, you won't be the one presenting that outline. Exactly like visualize "
     "and quiz, this is per-request, not per-session: a new, distinct "
     "research request needs its own mode/depth asked again — never reuse a "
     "previous request's settings for a different topic. After calling "
@@ -267,12 +407,31 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "get_memory_overview one. Don't ask a clarifying question first for "
     "this — the question itself IS the request, so fill `request` "
     "immediately (this is a plain capability switch with content, not "
-    "visualize/quiz/research, so no extra parameters apply). Only fall "
-    "back to answering conversationally yourself if the request is clearly "
-    "NOT about study/mastery/memory-stats (e.g. 'what is this app', 'how "
-    "does spaced repetition work in general') — those are fine to answer "
-    "directly from what you "
-    "know, still without inventing specifics about their personal data.\n\n"
+    "visualize/quiz/research, so no extra parameters apply). After "
+    "calling, speak only a brief pointer, e.g. \"I've put some "
+    "suggestions together — check the chat.\" Never read the full advice "
+    "aloud; the detailed, personalized answer belongs in what gets "
+    "written. If the request is clearly NOT about study/mastery/memory-"
+    "stats (e.g. 'what is this app', 'how does spaced repetition work in "
+    "general'), it's a general question instead — follow the GENERAL "
+    "QUESTIONS section below rather than answering it purely out loud.\n\n"
+    "GENERAL QUESTIONS — for any substantive question that isn't a solve/"
+    "visualize/quiz/research/mastery-path request covered by the sections "
+    "above (a fact, a definition, a concept explanation, 'what is X', "
+    "'how does Y work', general tutoring) — call switch_capability"
+    "(capability='chat', request=<their question, verbatim or lightly "
+    "cleaned up>) so the full explanation is written in the chat where "
+    "the user can read it, exactly as if they'd typed it in themselves. "
+    "Do NOT answer these purely out loud with nothing written — a "
+    "spoken-only answer disappears the moment you stop talking, and the "
+    "user wants to be able to read it back. After calling, speak only "
+    "ONE short sentence — the headline fact or a pointer, never the "
+    "explanation itself. E.g. for 'what's the capital of France' say "
+    "\"Paris — I've written more detail in the chat\" rather than reading "
+    "a paragraph aloud. This is per-request, not per-session, same as "
+    "the other capabilities above: don't call switch_capability again "
+    "for filler/acknowledgements or a reply that's just conversation "
+    "about what you already wrote.\n\n"
     "UNCLEAR AUDIO — if the transcribed input is empty, garbled, just "
     "background noise, or otherwise doesn't contain an actual question or "
     "request, do NOT invent a topic or continue rambling on an unrelated "
@@ -289,8 +448,9 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "positively and point them to the chat, e.g. \"Here's the resolution — "
     "check the chat.\" or \"Working on it, you'll see the full solution in "
     "the chat.\" Keep it to one short sentence, then stop.\n\n"
-    "For everything else (questions, explanations, tutoring), just answer helpfully "
-    "and concisely — voice responses should be short."
+    "In every case, keep spoken replies short — a sentence or two at "
+    "most, even when small talk. The chat is where detail belongs; your "
+    "voice is a pointer to it, not a second copy of it."
 )
 
 
@@ -311,9 +471,8 @@ _REALTIME_TOOLS = [
         "name": "navigate_to",
         "description": (
             "Navigate to a different page/section of the app. Use when the "
-            "user asks to open Settings, go to their agents, open the "
-            "co-writer, the book, the learning space, notebooks, memory, "
-            "the knowledge center, or go back home."
+            "user asks to open Settings, go to the learning space, "
+            "notebooks, the knowledge center, or go back home."
         ),
         "parameters": {
             "type": "object",
@@ -323,13 +482,8 @@ _REALTIME_TOOLS = [
                     "enum": [
                         "home",
                         "settings",
-                        "partners",
-                        "agents",
-                        "co_writer",
-                        "book",
                         "learning_space",
                         "notebooks",
-                        "memory",
                         "knowledge_center",
                     ],
                 }
@@ -507,14 +661,19 @@ _REALTIME_TOOLS = [
         "description": (
             "Open the file-attachment picker in the chat composer — the "
             "exact same dialog as clicking the attach/paperclip button "
-            "yourself. Use for ANY phrasing of wanting to add a file from "
-            "their device: 'I want to upload a file', 'let me attach a "
-            "document', 'add a picture', 'open a file', 'open file', 'choose "
-            "a file'. 'Open a file' / 'open file' means THIS, not "
-            "open_history or navigate_to — those are for different panels/"
-            "pages, this is specifically about picking a file to attach. "
-            "Just call this — never say you can't access files or that "
-            "you're audio-only; opening the picker for them is the correct "
+            "yourself. Use for ANY phrasing of wanting to add or open a "
+            "file from their device, in statement OR question form: 'I "
+            "want to upload a file', 'let me attach a document', 'add a "
+            "picture', 'open a file', 'open the file', 'open file', "
+            "'choose a file', 'can you open the file', 'can you open a "
+            "file for me'. This is a command to run, not a question to "
+            "answer conversationally — never reply in plain speech/text "
+            "asking the user to upload a file instead of calling this; "
+            "that leaves them stuck with no picker open. Not open_history "
+            "or navigate_to — those are for different panels/pages, this "
+            "is specifically about picking a file to attach. Just call "
+            "this — never say you can't access files or that you're "
+            "audio-only; opening the picker for them is the correct "
             "response."
         ),
         "parameters": {"type": "object", "properties": {}},
@@ -576,6 +735,558 @@ _REALTIME_TOOLS = [
             "open on screen."
         ),
         "parameters": {"type": "object", "properties": {}},
+    },
+    # --- Chat message / conversation actions -----------------------------
+    {
+        "type": "function",
+        "name": "cancel_response",
+        "description": (
+            "Stop the assistant's response while it is still streaming. Use "
+            "when the user says 'stop', 'cancel', 'never mind', or similar "
+            "while a response is being generated."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "regenerate_response",
+        "description": (
+            "Regenerate the assistant's last response to the user's most "
+            "recent message. Use for 'try again', 'regenerate that', "
+            "'give me another answer'. Only meaningful right after an "
+            "assistant reply, not while one is still streaming."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "edit_last_message",
+        "description": (
+            "Edit the user's own last sent message and resend it as a new "
+            "reply, replacing what they said. Use for 'actually, change "
+            "that to...', 'edit my last message', 'I meant to say...'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "new_content": {
+                    "type": "string",
+                    "description": "The full replacement text for the user's last message.",
+                }
+            },
+            "required": ["new_content"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "delete_last_turn",
+        "description": (
+            "Permanently delete the most recent user/assistant turn from "
+            "the conversation. DESTRUCTIVE — only call this after the user "
+            "has explicitly said yes to a direct confirmation question you "
+            "asked them in this same conversation (e.g. you ask 'are you "
+            "sure you want to delete that?' and they confirm). Never call "
+            "this on the first ask."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "switch_message_branch",
+        "description": (
+            "Switch to a sibling version of the current turn, when the user "
+            "has regenerated or edited a message more than once and there "
+            "are multiple versions to page through. Use for 'show me the "
+            "other version', 'go back to the previous answer', 'next "
+            "version'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "direction": {"type": "string", "enum": ["previous", "next"]}
+            },
+            "required": ["direction"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "rename_session",
+        "description": "Rename the current chat session's title.",
+        "parameters": {
+            "type": "object",
+            "properties": {"title": {"type": "string"}},
+            "required": ["title"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "download_session",
+        "description": (
+            "Download the current chat conversation as a Markdown file. Use "
+            "for 'download this chat', 'export this conversation', 'save "
+            "this session to my device'."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "save_chat_to_notebook",
+        "description": (
+            "Save the current chat conversation into a notebook immediately "
+            "— no dialog, no extra click. Use this for 'save this chat to "
+            "my notebook', 'save this conversation', 'bookmark this chat' "
+            "— not navigate_to, and not open_save_to_notebook unless the "
+            "user specifically asks to review or pick which messages first. "
+            "Different from save_quiz_to_notebook, which is for quiz "
+            "content."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "open_save_to_notebook",
+        "description": (
+            "Open the save-to-notebook dialog so the user can pick which "
+            "messages to include and which notebook to use, instead of "
+            "saving everything immediately. Only use this when the user "
+            "specifically asks to review, choose, or open that dialog — "
+            "for a plain 'save this chat', use save_chat_to_notebook "
+            "instead, which needs no further click."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "toggle_viewer_panel",
+        "description": (
+            "Open, close, or toggle the side viewer panel next to the chat "
+            "(shows generated files/activity). Omit `open` to just toggle "
+            "its current state."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"open": {"type": "boolean"}},
+        },
+    },
+    # --- Quiz-taking actions ----------------------------------------------
+    {
+        "type": "function",
+        "name": "quiz_answer",
+        "description": (
+            "Select or type an answer for the current quiz question. Only "
+            "meaningful while a quiz is open on screen. Use `option` for a "
+            "multiple-choice letter ('A','B','C','D') or true/false "
+            "('true'/'false'); use `text` for a free-response/fill-in-the-"
+            "blank/short-answer/essay question."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "option": {"type": "string"},
+                "text": {"type": "string"},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "name": "quiz_navigate",
+        "description": (
+            "Move to a different question within the current quiz. Only "
+            "meaningful while a quiz is open on screen."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "direction": {"type": "string", "enum": ["previous", "next"]},
+                "index": {
+                    "type": "integer",
+                    "description": "Jump directly to this question number (1-based, as spoken by the user).",
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "name": "quiz_submit_answer",
+        "description": "Submit the currently selected/typed answer for the current quiz question.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "quiz_reset_answer",
+        "description": "Clear/reset the answer on the current quiz question so the user can retry it.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "quiz_request_judging",
+        "description": (
+            "Ask the AI to judge/grade the user's submitted answer on the "
+            "current quiz question. Use for 'grade this', 'was I right', "
+            "'check my answer'."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "quiz_toggle_bookmark",
+        "description": "Toggle a bookmark on the current quiz question.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "quiz_add_to_category",
+        "description": (
+            "File the current quiz question into a named category, creating "
+            "the category if it doesn't already exist."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"category_name": {"type": "string"}},
+            "required": ["category_name"],
+        },
+    },
+    # --- Research outline actions ------------------------------------------
+    {
+        "type": "function",
+        "name": "quiz_set_answer_view",
+        "description": (
+            "Switch the current quiz question's review block between the "
+            "reference answer and the AI judgment, when both are available. "
+            "Only meaningful once the question has been answered and, for "
+            "the judgment tab, judged."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"view": {"type": "string", "enum": ["reference", "judgment"]}},
+            "required": ["view"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "quiz_toggle_review",
+        "description": (
+            "Collapse or expand the current quiz question's reference/AI-"
+            "judgment review block. Omit `collapsed` to just toggle."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"collapsed": {"type": "boolean"}},
+        },
+    },
+    {
+        "type": "function",
+        "name": "quiz_open_followup",
+        "description": (
+            "Open a follow-up chat about the current quiz question, pinning "
+            "the question/answer/judgment as context. Use for 'let's talk "
+            "about this question', 'I want to ask about this one'."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "research_confirm_outline",
+        "description": (
+            "Confirm the current research outline and proceed to the full "
+            "run. Only meaningful while an outline is open for review."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "research_remove_outline_item",
+        "description": "Remove a section from the research outline currently open for review.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "integer",
+                    "description": "1-based position of the section to remove, as spoken by the user.",
+                }
+            },
+            "required": ["index"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "research_add_outline_item",
+        "description": "Add a new section to the research outline currently open for review.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "overview": {"type": "string"},
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "research_edit_outline_item",
+        "description": (
+            "Rewrite an existing section's title and/or overview in the "
+            "research outline currently open for review, without removing "
+            "and re-adding it."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "integer",
+                    "description": "1-based position of the section to edit, as spoken by the user.",
+                },
+                "title": {"type": "string"},
+                "overview": {"type": "string"},
+            },
+            "required": ["index"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "research_toggle_outline",
+        "description": (
+            "Collapse or expand the research outline card. Only meaningful "
+            "once the outline has been confirmed and research is running "
+            "or done — before that, it's always expanded."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"collapsed": {"type": "boolean"}},
+        },
+    },
+    # --- Visualize viewer actions -------------------------------------------
+    {
+        "type": "function",
+        "name": "visualize_fullscreen",
+        "description": (
+            "Enter or exit fullscreen view of the visualization currently "
+            "on screen. Not available for interactive HTML visualizations."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"enter": {"type": "boolean"}},
+            "required": ["enter"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "visualize_show_code",
+        "description": "Show or hide the underlying code of the visualization currently on screen.",
+        "parameters": {
+            "type": "object",
+            "properties": {"show": {"type": "boolean"}},
+            "required": ["show"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "visualize_copy_code",
+        "description": "Copy the underlying code of the visualization currently on screen to the clipboard.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    # --- Mastery path management --------------------------------------------
+    {
+        "type": "function",
+        "name": "mastery_path_select",
+        "description": (
+            "Open a specific existing mastery path by name in the learning "
+            "space, to view its progress map."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"path_name": {"type": "string"}},
+            "required": ["path_name"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "mastery_path_continue",
+        "description": (
+            "Resume an existing mastery path by name, opening its chat "
+            "session to continue studying where the user left off."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"path_name": {"type": "string"}},
+            "required": ["path_name"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "mastery_path_redo",
+        "description": (
+            "Reset an existing mastery path's progress so the user can "
+            "start it over. DESTRUCTIVE — only call this after the user has "
+            "explicitly said yes to a direct confirmation question you "
+            "asked them in this same conversation. Never call this on the "
+            "first ask."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"path_name": {"type": "string"}},
+            "required": ["path_name"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "mastery_path_delete",
+        "description": (
+            "Permanently delete an existing mastery path. DESTRUCTIVE — "
+            "only call this after the user has explicitly said yes to a "
+            "direct confirmation question you asked them in this same "
+            "conversation. Never call this on the first ask."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"path_name": {"type": "string"}},
+            "required": ["path_name"],
+        },
+    },
+    # --- Context-attach -------------------------------------------------------
+    {
+        "type": "function",
+        "name": "select_model",
+        "description": (
+            "Switch which LLM model the next message will use. Use for "
+            "'switch to GPT-5', 'use Claude', 'change the model to...'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The model name as the user said it.",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "select_persona",
+        "description": (
+            "Switch which persona the chat uses, or clear it back to none. "
+            "Use for 'switch to the tutor persona', 'use my study-buddy "
+            "persona', 'clear the persona' / 'no persona'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "The persona name as the user said it, or empty/"
+                        "'none' to clear the current persona."
+                    ),
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "select_agent",
+        "description": (
+            "Switch which connected agent the chat consults, or clear it. "
+            "Use for 'use my research agent', 'consult the writing agent', "
+            "'stop using an agent' / 'no agent'. Different from a saved "
+            "personal AI companion — this is a connected external agent "
+            "tool."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "The agent name as the user said it, or empty/"
+                        "'none' to clear the current agent."
+                    ),
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "toggle_knowledge_base",
+        "description": (
+            "Turn a knowledge base on or off for the next message — calling "
+            "this again on the same one turns it back off. Use for 'use my "
+            "physics knowledge base', 'search my textbook notes', 'stop "
+            "using that knowledge base'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The knowledge base name as the user said it.",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "remove_attachment",
+        "description": (
+            "Remove a file the user has queued to attach to their next "
+            "message but not yet sent. Removes the most recently added one "
+            "unless `all` is true, which clears every queued attachment."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"all": {"type": "boolean"}},
+        },
+    },
+    {
+        "type": "function",
+        "name": "copy_last_message",
+        "description": (
+            "Copy the assistant's last message to the clipboard. Use for "
+            "'copy that', 'copy the last response'."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "attach_book_reference",
+        "description": (
+            "Attach a book or a specific book page/section as context to "
+            "the user's next message, before they send it. Use for 'attach "
+            "the chapter on...', 'reference my book about...'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The book title, chapter, or topic the user described.",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "attach_question_bank_entry",
+        "description": (
+            "Attach a saved question-bank entry as context to the user's "
+            "next message, before they send it. Use for 'attach that "
+            "question about...', 'reference the saved question on...'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The topic or text of the saved question the user described.",
+                }
+            },
+            "required": ["query"],
+        },
     },
     {
         "type": "function",

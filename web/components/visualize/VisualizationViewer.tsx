@@ -8,7 +8,19 @@ import { useTranslation } from "react-i18next";
 import { Mermaid } from "@/components/Mermaid";
 import { prepareIframeHtml } from "@/lib/iframe-html";
 import { isManimResult, type VisualizeResult } from "@/lib/visualize-types";
+import {
+  VISUALIZE_ACTION_EVENT,
+  type VisualizeAction,
+  type VisualizeActionPayload,
+  dispatchUiContext,
+} from "@/context/app-shell-storage";
 import "./svg-theme.css";
+
+// Tracks the most-recently-mounted VisualizationViewer instance so a
+// voice-triggered viewer action (dispatched globally, with no idea which
+// visualization is "current") only acts on the one the user is actually
+// looking at — same pattern as QuizViewer's activeQuizInstanceId.
+let activeVisualizeInstanceId = 0;
 
 const MathAnimatorViewer = dynamic(
   () => import("@/components/math-animator/MathAnimatorViewer"),
@@ -392,6 +404,12 @@ export default function VisualizationViewer({
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const instanceIdRef = useRef(0);
+
+  useEffect(() => {
+    activeVisualizeInstanceId += 1;
+    instanceIdRef.current = activeVisualizeInstanceId;
+  }, []);
 
   useEffect(() => {
     if (!fullscreen) return;
@@ -406,6 +424,75 @@ export default function VisualizationViewer({
       document.body.style.overflow = prevOverflow;
     };
   }, [fullscreen]);
+
+  // Voice-triggered viewer actions (visualize_* tools, see
+  // VoiceCallContext.tsx) — only the currently-active instance reacts.
+  // Placed before the manim early-return since hooks must run
+  // unconditionally; manim results just no-op inside the handler.
+  useEffect(() => {
+    function onVisualizeAction(event: Event) {
+      if (instanceIdRef.current !== activeVisualizeInstanceId) return;
+      if (isManimResult(result)) return;
+      const detail = (
+        event as CustomEvent<{
+          action: VisualizeAction;
+          payload?: VisualizeActionPayload;
+        }>
+      ).detail;
+      switch (detail?.action) {
+        case "fullscreen":
+          if (
+            result.render_type !== "html" &&
+            typeof detail.payload?.enter === "boolean"
+          ) {
+            setFullscreen(detail.payload.enter);
+          }
+          break;
+        case "show_code":
+          if (typeof detail.payload?.show === "boolean") {
+            setShowCode(detail.payload.show);
+          } else {
+            setShowCode((prev) => !prev);
+          }
+          break;
+        case "copy_code":
+          navigator.clipboard
+            .writeText(result.code.content)
+            .then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            })
+            .catch(() => {
+              /* clipboard API may be unavailable */
+            });
+          break;
+        default:
+          break;
+      }
+    }
+    window.addEventListener(VISUALIZE_ACTION_EVENT, onVisualizeAction);
+    return () =>
+      window.removeEventListener(VISUALIZE_ACTION_EVENT, onVisualizeAction);
+  }, [result]);
+
+  // Ground the realtime voice model in the fact that this visualization is
+  // on screen (see UI_CONTEXT_EVENT's doc comment in app-shell-storage.ts)
+  // — otherwise "show me the code" has nothing to act on. Manim results
+  // don't support these controls, so they don't announce.
+  useEffect(() => {
+    if (instanceIdRef.current !== activeVisualizeInstanceId) return;
+    if (isManimResult(result)) return;
+    const description = result.analysis?.description?.trim();
+    dispatchUiContext(
+      `A visualization is currently open on screen (${result.render_type} ` +
+        `format)${description ? `: ${description}` : ""}. The user can ` +
+        `interact with THIS visualization by voice using ` +
+        `visualize_fullscreen, visualize_show_code, visualize_copy_code — ` +
+        `do NOT generate a new visualization (switch_capability) for ` +
+        `requests about this one; only do that if the user clearly asks ` +
+        `for a different/new visualization on another topic.`,
+    );
+  }, [result]);
 
   if (isManimResult(result)) {
     return <MathAnimatorViewer result={result.manim} />;

@@ -19,6 +19,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -31,6 +32,12 @@ import {
   dispatchExpandDock,
   dispatchOpenFilePicker,
   dispatchQuizSessionAction,
+  dispatchOpenSaveToNotebook,
+  dispatchViewerPanel,
+  dispatchResearchOutlineAction,
+  dispatchVisualizeAction,
+  dispatchMasteryPathRefresh,
+  UI_CONTEXT_EVENT,
 } from "@/context/app-shell-storage";
 import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
 import { setTheme, type Theme } from "@/lib/theme";
@@ -40,6 +47,64 @@ import {
   QUIZ_QUESTION_TYPES,
   type NormalizedQuizQuestionType,
 } from "@/lib/quiz-question-type";
+import { buildVisiblePath, type SiblingInfo } from "@/lib/message-branches";
+import { downloadChatMarkdown, buildChatMarkdown } from "@/lib/chat-export";
+import {
+  fetchAllProgress,
+  redoProgress,
+  deleteProgress,
+  type ProgressSummary,
+} from "@/lib/learning-api";
+import { bookApi } from "@/lib/book-api";
+import type { SelectedBookReference } from "@/lib/book-references";
+import {
+  listNotebookEntries,
+  listNotebooks,
+  createNotebook,
+  saveNotebookRecord,
+} from "@/lib/notebook-api";
+import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
+import { listLLMOptions } from "@/lib/llm-options";
+import { listPersonas } from "@/lib/personas-api";
+import { listKnowledgeBases } from "@/lib/knowledge-api";
+
+/** Case-insensitive "best guess" match for resolving a spoken name (path,
+ *  book title, saved question text) against a list of candidates — exact
+ *  match wins, otherwise the longest substring containment either
+ *  direction. Returns null rather than a low-confidence guess so callers
+ *  can surface a clear "not found" error back to the model. */
+function bestFuzzyMatch<T>(
+  items: T[],
+  query: string,
+  label: (item: T) => string,
+): T | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  let best: T | null = null;
+  let bestScore = 0;
+  for (const item of items) {
+    const name = label(item).trim().toLowerCase();
+    if (!name) continue;
+    if (name === q) return item;
+    let score = 0;
+    if (name.includes(q)) score = q.length / name.length;
+    else if (q.includes(name)) score = name.length / q.length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = item;
+    }
+  }
+  return bestScore > 0 ? best : null;
+}
+
+async function resolveMasteryPath(name: string): Promise<ProgressSummary | null> {
+  try {
+    const result = await fetchAllProgress();
+    return bestFuzzyMatch(result.summaries, name, (s) => s.name);
+  } catch {
+    return null;
+  }
+}
 
 // Maps the voice-facing capability names declared in voice.py's session
 // config to this app's internal capability values (see QuickActionsPanel's
@@ -96,13 +161,8 @@ const VOICE_THEME_VALUES: ReadonlySet<string> = new Set([
 const VOICE_PAGE_ROUTES: Record<string, string> = {
   home: "/home",
   settings: "/settings",
-  partners: "/partners",
-  agents: "/agents",
-  co_writer: "/co-writer",
-  book: "/book",
   learning_space: "/space",
   notebooks: "/space/notebooks",
-  memory: "/memory",
   knowledge_center: "/knowledge",
 };
 
@@ -123,6 +183,20 @@ export interface VoiceComposerBridge {
    * should just get a spoken reply instead of silently opening a session.
    */
   alwaysForward?: boolean;
+  /** attach_book_reference voice tool — stages a resolved book reference
+   *  into the composer's attached-context state, same as applying the
+   *  BookReferencePicker by hand. Optional: only the home composer (which
+   *  owns that state) registers it. */
+  attachBookReference?: (reference: SelectedBookReference) => void;
+  /** attach_question_bank_entry voice tool — same idea for a resolved
+   *  saved question. */
+  attachQuestionEntry?: (entry: SelectedQuestionEntry) => void;
+  /** remove_attachment voice tool (all=false) — removes the most recently
+   *  queued attachment. */
+  removeLastAttachment?: () => void;
+  /** remove_attachment voice tool (all=true) — clears every queued
+   *  attachment. */
+  clearAttachments?: () => void;
 }
 
 interface VoiceCallContextValue {
@@ -525,6 +599,525 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
         case "download_quiz":
           dispatchQuizSessionAction("download");
           return { status: "ok" };
+        case "cancel_response":
+          chat?.cancelStreamingTurn();
+          return { status: "ok" };
+        case "regenerate_response": {
+          if (!chat) return { status: "error", message: "No active chat." };
+          if (chat.state.isStreaming) {
+            return {
+              status: "error",
+              message: "A response is still streaming — nothing to regenerate yet.",
+            };
+          }
+          chat.regenerateLastMessage();
+          return { status: "ok" };
+        }
+        case "edit_last_message": {
+          const newContent = String(args.new_content || "").trim();
+          if (!newContent) {
+            return { status: "error", message: "new_content was empty." };
+          }
+          if (!chat) return { status: "error", message: "No active chat." };
+          const { messages } = buildVisiblePath(
+            chat.state.messages,
+            chat.state.selectedBranches,
+          );
+          const lastUser = [...messages]
+            .reverse()
+            .find((m) => m.role === "user" && m.id !== undefined);
+          if (!lastUser || lastUser.id === undefined) {
+            return { status: "error", message: "There's no message to edit yet." };
+          }
+          await chat.editMessage(lastUser.id, newContent);
+          return { status: "ok" };
+        }
+        case "delete_last_turn": {
+          if (!chat) return { status: "error", message: "No active chat." };
+          const { messages } = buildVisiblePath(
+            chat.state.messages,
+            chat.state.selectedBranches,
+          );
+          const lastUser = [...messages]
+            .reverse()
+            .find((m) => m.role === "user" && m.id !== undefined);
+          if (!lastUser || lastUser.id === undefined) {
+            return { status: "error", message: "There's no turn to delete yet." };
+          }
+          await chat.deleteTurn(lastUser.id);
+          return { status: "ok" };
+        }
+        case "switch_message_branch": {
+          const direction = String(args.direction || "");
+          if (direction !== "previous" && direction !== "next") {
+            return { status: "error", message: `Unknown direction: ${direction}` };
+          }
+          if (!chat) return { status: "error", message: "No active chat." };
+          const { messages, siblingsByMessageId } = buildVisiblePath(
+            chat.state.messages,
+            chat.state.selectedBranches,
+          );
+          let info: SiblingInfo | undefined;
+          for (let i = messages.length - 1; i >= 0; i -= 1) {
+            const id = messages[i].id;
+            if (id !== undefined && siblingsByMessageId.has(id)) {
+              info = siblingsByMessageId.get(id);
+              break;
+            }
+          }
+          if (!info) {
+            return { status: "error", message: "There's only one version of this turn." };
+          }
+          const prevIdx = info.index - 2;
+          const nextIdx = info.index;
+          const targetId =
+            direction === "previous"
+              ? prevIdx >= 0
+                ? info.siblingIds[prevIdx]
+                : null
+              : nextIdx < info.siblingIds.length
+                ? info.siblingIds[nextIdx]
+                : null;
+          if (targetId === null || targetId === undefined) {
+            return { status: "error", message: `No ${direction} version available.` };
+          }
+          chat.switchBranch(info.parentId, targetId);
+          return { status: "ok" };
+        }
+        case "rename_session": {
+          const title = String(args.title || "").trim();
+          if (!title) return { status: "error", message: "title was empty." };
+          await chat?.renameSessionTitle(title);
+          return { status: "ok" };
+        }
+        case "download_session": {
+          if (!chat || chat.state.messages.length === 0) {
+            return { status: "error", message: "No chat messages to download yet." };
+          }
+          const firstUser = chat.state.messages.find((m) => m.role === "user");
+          const title =
+            chat.state.sessionTitle.trim() ||
+            firstUser?.content.trim().slice(0, 80) ||
+            "Chat Session";
+          downloadChatMarkdown(chat.state.messages, { title });
+          return { status: "ok" };
+        }
+        case "save_chat_to_notebook": {
+          if (!chat || chat.state.messages.length === 0) {
+            return { status: "error", message: "No chat messages to save yet." };
+          }
+          try {
+            const notebooks = await listNotebooks();
+            const target =
+              notebooks.length > 0
+                ? notebooks.reduce((latest, nb) =>
+                    (nb.updated_at ?? 0) > (latest.updated_at ?? 0) ? nb : latest,
+                  )
+                : await createNotebook({ name: "Chat Sessions" });
+            const firstUser = chat.state.messages.find((m) => m.role === "user");
+            // Prefer the session's actual (possibly renamed via
+            // rename_session) title over deriving one from the first
+            // message — a rename should be reflected in what gets saved.
+            const title =
+              chat.state.sessionTitle.trim() ||
+              firstUser?.content.trim().slice(0, 80) ||
+              "Chat Session";
+            const transcript = buildChatMarkdown(chat.state.messages, { title });
+            await saveNotebookRecord({
+              notebookIds: [target.id],
+              recordType: "chat",
+              title,
+              userQuery: firstUser?.content.trim() || title,
+              output: transcript,
+              metadata: {
+                source: "chat",
+                session_id: chat.state.sessionId,
+                total_message_count: chat.state.messages.length,
+              },
+            });
+            return { status: "ok" };
+          } catch (err) {
+            return {
+              status: "error",
+              message: err instanceof Error ? err.message : "Failed to save chat to notebook.",
+            };
+          }
+        }
+        case "open_save_to_notebook":
+          dispatchOpenSaveToNotebook();
+          return { status: "ok" };
+        case "toggle_viewer_panel": {
+          const open = typeof args.open === "boolean" ? args.open : undefined;
+          dispatchViewerPanel(open);
+          return { status: "ok" };
+        }
+        case "quiz_answer": {
+          const option = args.option ? String(args.option) : undefined;
+          const text = args.text ? String(args.text) : undefined;
+          if (!option && !text) {
+            return { status: "error", message: "Either option or text must be given." };
+          }
+          dispatchQuizSessionAction("answer", { option, text });
+          return { status: "ok" };
+        }
+        case "quiz_navigate": {
+          const direction =
+            args.direction === "previous" || args.direction === "next"
+              ? args.direction
+              : undefined;
+          const index = Number(args.index);
+          const hasIndex = Number.isFinite(index) && index > 0;
+          if (!direction && !hasIndex) {
+            return {
+              status: "error",
+              message: "Either direction or a positive index must be given.",
+            };
+          }
+          dispatchQuizSessionAction("navigate", {
+            direction,
+            index: hasIndex ? Math.round(index) : undefined,
+          });
+          return { status: "ok" };
+        }
+        case "quiz_submit_answer":
+          dispatchQuizSessionAction("submit");
+          return { status: "ok" };
+        case "quiz_reset_answer":
+          dispatchQuizSessionAction("reset");
+          return { status: "ok" };
+        case "quiz_request_judging":
+          dispatchQuizSessionAction("judge");
+          return { status: "ok" };
+        case "quiz_toggle_bookmark":
+          dispatchQuizSessionAction("bookmark");
+          return { status: "ok" };
+        case "quiz_add_to_category": {
+          const categoryName = String(args.category_name || "").trim();
+          if (!categoryName) {
+            return { status: "error", message: "category_name was empty." };
+          }
+          dispatchQuizSessionAction("add_to_category", { categoryName });
+          return { status: "ok" };
+        }
+        case "quiz_set_answer_view": {
+          const view = args.view === "reference" || args.view === "judgment" ? args.view : undefined;
+          if (!view) return { status: "error", message: `Unknown view: ${args.view}` };
+          dispatchQuizSessionAction("set_answer_view", { view });
+          return { status: "ok" };
+        }
+        case "quiz_toggle_review": {
+          const collapsed = typeof args.collapsed === "boolean" ? args.collapsed : undefined;
+          dispatchQuizSessionAction("toggle_review_collapse", { collapsed });
+          return { status: "ok" };
+        }
+        case "quiz_open_followup":
+          dispatchQuizSessionAction("open_followup");
+          return { status: "ok" };
+        case "research_confirm_outline":
+          dispatchResearchOutlineAction("confirm");
+          return { status: "ok" };
+        case "research_remove_outline_item": {
+          const index = Number(args.index);
+          if (!Number.isFinite(index) || index <= 0) {
+            return {
+              status: "error",
+              message: "index must be a positive 1-based position.",
+            };
+          }
+          dispatchResearchOutlineAction("remove_item", { index: Math.round(index) });
+          return { status: "ok" };
+        }
+        case "research_add_outline_item": {
+          const title = String(args.title || "").trim();
+          if (!title) return { status: "error", message: "title was empty." };
+          dispatchResearchOutlineAction("add_item", {
+            title,
+            overview: args.overview ? String(args.overview) : undefined,
+          });
+          return { status: "ok" };
+        }
+        case "research_edit_outline_item": {
+          const index = Number(args.index);
+          if (!Number.isFinite(index) || index <= 0) {
+            return {
+              status: "error",
+              message: "index must be a positive 1-based position.",
+            };
+          }
+          const title = args.title !== undefined ? String(args.title) : undefined;
+          const overview =
+            args.overview !== undefined ? String(args.overview) : undefined;
+          if (title === undefined && overview === undefined) {
+            return { status: "error", message: "Either title or overview must be given." };
+          }
+          dispatchResearchOutlineAction("edit_item", { index: Math.round(index), title, overview });
+          return { status: "ok" };
+        }
+        case "research_toggle_outline": {
+          const collapsed = typeof args.collapsed === "boolean" ? args.collapsed : undefined;
+          dispatchResearchOutlineAction("toggle_collapse", { collapsed });
+          return { status: "ok" };
+        }
+        case "visualize_fullscreen":
+          dispatchVisualizeAction("fullscreen", { enter: Boolean(args.enter) });
+          return { status: "ok" };
+        case "visualize_show_code":
+          dispatchVisualizeAction("show_code", { show: Boolean(args.show) });
+          return { status: "ok" };
+        case "visualize_copy_code":
+          dispatchVisualizeAction("copy_code");
+          return { status: "ok" };
+        case "mastery_path_select": {
+          const pathName = String(args.path_name || "").trim();
+          if (!pathName) return { status: "error", message: "path_name was empty." };
+          const match = await resolveMasteryPath(pathName);
+          if (!match) {
+            return { status: "error", message: `No mastery path found matching "${pathName}".` };
+          }
+          router.push(`/space/learning?path=${encodeURIComponent(match.book_id)}`);
+          return { status: "ok" };
+        }
+        case "mastery_path_continue": {
+          const pathName = String(args.path_name || "").trim();
+          if (!pathName) return { status: "error", message: "path_name was empty." };
+          const match = await resolveMasteryPath(pathName);
+          if (!match) {
+            return { status: "error", message: `No mastery path found matching "${pathName}".` };
+          }
+          router.push(`/home/${encodeURIComponent(match.book_id)}`);
+          return { status: "ok" };
+        }
+        case "mastery_path_redo": {
+          const pathName = String(args.path_name || "").trim();
+          if (!pathName) return { status: "error", message: "path_name was empty." };
+          const match = await resolveMasteryPath(pathName);
+          if (!match) {
+            return { status: "error", message: `No mastery path found matching "${pathName}".` };
+          }
+          await redoProgress(match.book_id);
+          dispatchMasteryPathRefresh();
+          return { status: "ok" };
+        }
+        case "mastery_path_delete": {
+          const pathName = String(args.path_name || "").trim();
+          if (!pathName) return { status: "error", message: "path_name was empty." };
+          const match = await resolveMasteryPath(pathName);
+          if (!match) {
+            return { status: "error", message: `No mastery path found matching "${pathName}".` };
+          }
+          await deleteProgress(match.book_id);
+          dispatchMasteryPathRefresh();
+          return { status: "ok" };
+        }
+        case "select_model": {
+          const query = String(args.query || "").trim();
+          if (!query) return { status: "error", message: "query was empty." };
+          if (!chat) return { status: "error", message: "No active chat." };
+          try {
+            const { options } = await listLLMOptions();
+            const match = bestFuzzyMatch(
+              options,
+              query,
+              (o) => o.model_name || o.model,
+            );
+            if (!match) {
+              return { status: "error", message: `No model found matching "${query}".` };
+            }
+            chat.setLLMSelection({ profile_id: match.profile_id, model_id: match.model_id });
+            return { status: "ok" };
+          } catch (err) {
+            return {
+              status: "error",
+              message: err instanceof Error ? err.message : "Failed to switch model.",
+            };
+          }
+        }
+        case "select_persona": {
+          const query = String(args.query || "").trim();
+          if (!chat) return { status: "error", message: "No active chat." };
+          if (!query || /^(none|no persona|default)$/i.test(query)) {
+            chat.setPersonaSelection("");
+            return { status: "ok" };
+          }
+          try {
+            const personas = await listPersonas();
+            const match = bestFuzzyMatch(personas, query, (p) => p.name);
+            if (!match) {
+              return { status: "error", message: `No persona found matching "${query}".` };
+            }
+            chat.setPersonaSelection(match.name);
+            return { status: "ok" };
+          } catch (err) {
+            return {
+              status: "error",
+              message: err instanceof Error ? err.message : "Failed to switch persona.",
+            };
+          }
+        }
+        case "select_agent": {
+          const query = String(args.query || "").trim();
+          if (!chat) return { status: "error", message: "No active chat." };
+          try {
+            const allKbs = await listKnowledgeBases();
+            const agentNames = new Set(
+              allKbs
+                .filter((kb) => kb.metadata?.type === "subagent")
+                .map((kb) => kb.name),
+            );
+            const withoutAgents = chat.state.knowledgeBases.filter(
+              (n) => !agentNames.has(n),
+            );
+            if (!query || /^(none|no agent)$/i.test(query)) {
+              chat.setKBs(withoutAgents);
+              return { status: "ok" };
+            }
+            const agentOptions = allKbs.filter((kb) => agentNames.has(kb.name));
+            const match = bestFuzzyMatch(agentOptions, query, (a) => a.name);
+            if (!match) {
+              return { status: "error", message: `No connected agent found matching "${query}".` };
+            }
+            chat.setKBs([...withoutAgents, match.name]);
+            return { status: "ok" };
+          } catch (err) {
+            return {
+              status: "error",
+              message: err instanceof Error ? err.message : "Failed to switch agent.",
+            };
+          }
+        }
+        case "toggle_knowledge_base": {
+          const query = String(args.query || "").trim();
+          if (!query) return { status: "error", message: "query was empty." };
+          if (!chat) return { status: "error", message: "No active chat." };
+          try {
+            const allKbs = await listKnowledgeBases();
+            const kbOptions = allKbs.filter((kb) => kb.metadata?.type !== "subagent");
+            const match = bestFuzzyMatch(kbOptions, query, (kb) => kb.name);
+            if (!match) {
+              return { status: "error", message: `No knowledge base found matching "${query}".` };
+            }
+            const current = chat.state.knowledgeBases;
+            chat.setKBs(
+              current.includes(match.name)
+                ? current.filter((n) => n !== match.name)
+                : [...current, match.name],
+            );
+            return { status: "ok" };
+          } catch (err) {
+            return {
+              status: "error",
+              message: err instanceof Error ? err.message : "Failed to toggle knowledge base.",
+            };
+          }
+        }
+        case "remove_attachment": {
+          const bridge = composerBridgeRef.current;
+          // Verify there's actually something queued before confirming —
+          // otherwise a stale/unregistered bridge would still report "ok"
+          // even though nothing was removed.
+          if (!bridge || !bridge.hasPendingAttachments()) {
+            return { status: "error", message: "There are no attachments queued to remove." };
+          }
+          const all = Boolean(args.all);
+          if (all) {
+            if (!bridge.clearAttachments) {
+              return { status: "error", message: "Can't clear attachments right now." };
+            }
+            bridge.clearAttachments();
+            return { status: "ok" };
+          }
+          if (!bridge.removeLastAttachment) {
+            return { status: "error", message: "Can't remove an attachment right now." };
+          }
+          bridge.removeLastAttachment();
+          return { status: "ok" };
+        }
+        case "copy_last_message": {
+          if (!chat) return { status: "error", message: "No active chat." };
+          const { messages } = buildVisiblePath(
+            chat.state.messages,
+            chat.state.selectedBranches,
+          );
+          const lastAssistant = [...messages]
+            .reverse()
+            .find((m) => m.role === "assistant" && m.content?.trim());
+          if (!lastAssistant) {
+            return { status: "error", message: "There's no assistant message to copy yet." };
+          }
+          try {
+            await navigator.clipboard.writeText(lastAssistant.content);
+            return { status: "ok" };
+          } catch (err) {
+            return {
+              status: "error",
+              message: err instanceof Error ? err.message : "Failed to copy to clipboard.",
+            };
+          }
+        }
+        case "attach_book_reference": {
+          const query = String(args.query || "").trim();
+          if (!query) return { status: "error", message: "query was empty." };
+          const bridge = composerBridgeRef.current;
+          if (!bridge?.attachBookReference) {
+            return {
+              status: "error",
+              message: "No chat composer is open to attach a reference to.",
+            };
+          }
+          try {
+            const { books } = await bookApi.list();
+            const book = bestFuzzyMatch(books, query, (b) => b.title);
+            if (!book) {
+              return { status: "error", message: `No book found matching "${query}".` };
+            }
+            const detail = await bookApi.get(book.id);
+            const pages = detail.pages.map((p) => ({
+              bookId: book.id,
+              bookTitle: book.title,
+              pageId: p.id,
+              pageTitle: p.title,
+              chapterId: p.chapter_id,
+            }));
+            bridge.attachBookReference({ bookId: book.id, bookTitle: book.title, pages });
+            return { status: "ok" };
+          } catch (err) {
+            return {
+              status: "error",
+              message: err instanceof Error ? err.message : "Failed to attach book reference.",
+            };
+          }
+        }
+        case "attach_question_bank_entry": {
+          const query = String(args.query || "").trim();
+          if (!query) return { status: "error", message: "query was empty." };
+          const bridge = composerBridgeRef.current;
+          if (!bridge?.attachQuestionEntry) {
+            return {
+              status: "error",
+              message: "No chat composer is open to attach a reference to.",
+            };
+          }
+          try {
+            const { items } = await listNotebookEntries({ limit: 200 });
+            const entry = bestFuzzyMatch(items, query, (e) => e.question);
+            if (!entry) {
+              return { status: "error", message: `No saved question found matching "${query}".` };
+            }
+            bridge.attachQuestionEntry({
+              id: entry.id,
+              question: entry.question,
+              session_title: entry.session_title,
+              is_correct: entry.is_correct,
+              difficulty: entry.difficulty,
+            });
+            return { status: "ok" };
+          } catch (err) {
+            return {
+              status: "error",
+              message: err instanceof Error ? err.message : "Failed to attach question.",
+            };
+          }
+        }
         case "get_memory_overview":
           // Pure data fetch, no browser-side effect — the MCP round-trip
           // (executeVoiceAction above) already did the real work and
@@ -545,6 +1138,20 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     onFunctionCall: handleFunctionCall,
     onTurnComplete: handleTurnComplete,
   });
+
+  // Ground the model in whatever's actually on screen (see UI_CONTEXT_EVENT's
+  // doc comment in app-shell-storage.ts) — a quiz/outline/visualization
+  // announces itself here whenever it becomes active or its visible state
+  // changes, so "answer B" or "complete the quiz" acts on the real thing
+  // instead of starting a new one. No-op while no call is connected.
+  useEffect(() => {
+    function onUiContext(event: Event) {
+      const summary = (event as CustomEvent<{ summary: string }>).detail?.summary;
+      if (summary) call.injectContext(summary);
+    }
+    window.addEventListener(UI_CONTEXT_EVENT, onUiContext);
+    return () => window.removeEventListener(UI_CONTEXT_EVENT, onUiContext);
+  }, [call]);
 
   return (
     <VoiceCallCtx.Provider

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import {
   GraduationCap,
@@ -23,6 +23,7 @@ import {
   type MasteryMapResult,
   type ObjectiveStatus,
 } from "@/lib/learning-api";
+import { MASTERY_PATH_REFRESH_EVENT } from "@/context/app-shell-storage";
 
 /**
  * Mastery Path dashboard — the persistent "screen" of the mastery experience.
@@ -39,6 +40,7 @@ export default function MasteryPathPage() {
   const zh = i18n.language?.toLowerCase().startsWith("zh");
   const tr = useCallback((cn: string, en: string) => (zh ? cn : en), [zh]);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [paths, setPaths] = useState<ProgressSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -65,6 +67,39 @@ export default function MasteryPathPage() {
   useEffect(() => {
     loadList();
   }, [loadList]);
+
+  // mastery_path_select (voice tool, see VoiceCallContext.tsx) resolves a
+  // spoken path name to a book_id and navigates here with ?path=<id> — read
+  // once on mount so it wins over loadList's own "select the first path"
+  // default (see `setSelected((prev) => prev ?? ...)` above).
+  useEffect(() => {
+    const requested = searchParams.get("path");
+    if (requested) setSelected(requested);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // mastery_path_redo / mastery_path_delete (voice tools) mutate progress
+  // directly via the API layer from VoiceCallContext.tsx, independent of
+  // whether this page is mounted, then dispatch this event so an
+  // already-open page re-fetches instead of showing stale data.
+  useEffect(() => {
+    async function onRefresh() {
+      await loadList();
+      if (!selected) return;
+      setLoadingDetail(true);
+      try {
+        const result = await fetchMasteryMap(selected);
+        setDetail(result);
+      } catch {
+        setDetail(null);
+      } finally {
+        setLoadingDetail(false);
+      }
+    }
+    window.addEventListener(MASTERY_PATH_REFRESH_EVENT, onRefresh);
+    return () =>
+      window.removeEventListener(MASTERY_PATH_REFRESH_EVENT, onRefresh);
+  }, [loadList, selected]);
 
   useEffect(() => {
     if (!selected) {

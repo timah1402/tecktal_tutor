@@ -338,5 +338,28 @@ export function useRealtimeVoiceCall(options: UseRealtimeVoiceCallOptions) {
   // Tear down if the component unmounts mid-call.
   useEffect(() => cleanup, [cleanup]);
 
-  return { state, error, notice, connect, disconnect };
+  // Silently ground the model in what's currently on screen (e.g. "a quiz
+  // is open, question 2 of 4") without it being spoken or shown as a user
+  // turn — a "system" conversation item is context for the model's next
+  // response, not a message it replies to. Needed because the model only
+  // ever sees the spoken transcript; it has no visibility into the app's
+  // UI state otherwise, so tools like quiz_answer never get called unless
+  // something tells it a quiz is actually visible right now. No-op if no
+  // call is connected.
+  const injectContext = useCallback(
+    (text: string) => {
+      if (!dcRef.current || dcRef.current.readyState !== "open") return;
+      sendClientEvent({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "system",
+          content: [{ type: "input_text", text }],
+        },
+      });
+    },
+    [sendClientEvent],
+  );
+
+  return { state, error, notice, connect, disconnect, injectContext };
 }

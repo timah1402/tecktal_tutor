@@ -51,13 +51,8 @@ mcp = FastMCP(
 _PAGES = (
     "home",
     "settings",
-    "partners",
-    "agents",
-    "co_writer",
-    "book",
     "learning_space",
     "notebooks",
-    "memory",
     "knowledge_center",
 )
 _CAPABILITIES = ("chat", "quiz", "research", "solve", "visualize", "mastery_path")
@@ -196,6 +191,288 @@ def save_quiz_to_notebook() -> dict[str, Any]:
 def download_quiz() -> dict[str, Any]:
     """Download the quiz the user is currently taking as a Markdown file."""
     return {"status": "ok"}
+
+
+@mcp.tool()
+def cancel_response() -> dict[str, Any]:
+    """Stop the assistant's response while it is still streaming."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def regenerate_response() -> dict[str, Any]:
+    """Regenerate the assistant's last response."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def edit_last_message(new_content: str) -> dict[str, Any]:
+    """Edit the user's own last sent message and resend it."""
+    if not new_content or not new_content.strip():
+        return _error("new_content must not be empty")
+    return {"status": "ok", "new_content": new_content}
+
+
+@mcp.tool()
+def delete_last_turn() -> dict[str, Any]:
+    """Permanently delete the most recent user/assistant turn."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def switch_message_branch(direction: str) -> dict[str, Any]:
+    """Switch to the previous/next sibling version of the current turn."""
+    if direction not in ("previous", "next"):
+        return _error(f"Unknown direction: {direction}")
+    return {"status": "ok", "direction": direction}
+
+
+@mcp.tool()
+def rename_session(title: str) -> dict[str, Any]:
+    """Rename the current chat session's title."""
+    if not title or not title.strip():
+        return _error("title must not be empty")
+    return {"status": "ok", "title": title}
+
+
+@mcp.tool()
+def download_session() -> dict[str, Any]:
+    """Download the current chat conversation as a Markdown file."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def save_chat_to_notebook() -> dict[str, Any]:
+    """Save the current chat into a notebook immediately."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def open_save_to_notebook() -> dict[str, Any]:
+    """Open the dialog to save the current chat's messages into a notebook."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def toggle_viewer_panel(open: bool | None = None) -> dict[str, Any]:
+    """Open, close, or toggle the side viewer panel."""
+    return {"status": "ok", "open": open}
+
+
+@mcp.tool()
+def quiz_answer(option: str = "", text: str = "") -> dict[str, Any]:
+    """Select or type an answer for the current quiz question."""
+    if not option and not text:
+        return _error("Either option or text must be provided")
+    return {"status": "ok", "option": option, "text": text}
+
+
+@mcp.tool()
+def quiz_navigate(direction: str = "", index: int = 0) -> dict[str, Any]:
+    """Move to a different question within the current quiz."""
+    if direction and direction not in ("previous", "next"):
+        return _error(f"Unknown direction: {direction}")
+    if not direction and index <= 0:
+        return _error("Either direction or a positive index must be provided")
+    return {"status": "ok", "direction": direction, "index": index}
+
+
+@mcp.tool()
+def quiz_submit_answer() -> dict[str, Any]:
+    """Submit the currently selected/typed answer for the current quiz question."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def quiz_reset_answer() -> dict[str, Any]:
+    """Clear/reset the answer on the current quiz question."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def quiz_request_judging() -> dict[str, Any]:
+    """Ask the AI to judge/grade the user's submitted answer."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def quiz_toggle_bookmark() -> dict[str, Any]:
+    """Toggle a bookmark on the current quiz question."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def quiz_add_to_category(category_name: str) -> dict[str, Any]:
+    """File the current quiz question into a named category."""
+    if not category_name or not category_name.strip():
+        return _error("category_name must not be empty")
+    return {"status": "ok", "category_name": category_name}
+
+
+@mcp.tool()
+def quiz_set_answer_view(view: str) -> dict[str, Any]:
+    """Switch the current question's review block to reference or judgment."""
+    if view not in ("reference", "judgment"):
+        return _error(f"Unknown view: {view}")
+    return {"status": "ok", "view": view}
+
+
+@mcp.tool()
+def quiz_toggle_review(collapsed: bool | None = None) -> dict[str, Any]:
+    """Collapse or expand the current question's review block."""
+    return {"status": "ok", "collapsed": collapsed}
+
+
+@mcp.tool()
+def quiz_open_followup() -> dict[str, Any]:
+    """Open a follow-up chat about the current quiz question."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def research_confirm_outline() -> dict[str, Any]:
+    """Confirm the current research outline and proceed to the full run."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def research_remove_outline_item(index: int) -> dict[str, Any]:
+    """Remove a section from the research outline by 1-based position."""
+    if index <= 0:
+        return _error("index must be a positive 1-based position")
+    return {"status": "ok", "index": index}
+
+
+@mcp.tool()
+def research_add_outline_item(title: str, overview: str = "") -> dict[str, Any]:
+    """Add a new section to the research outline."""
+    if not title or not title.strip():
+        return _error("title must not be empty")
+    return {"status": "ok", "title": title, "overview": overview}
+
+
+@mcp.tool()
+def research_edit_outline_item(
+    index: int, title: str = "", overview: str = ""
+) -> dict[str, Any]:
+    """Rewrite an existing section's title/overview by 1-based position."""
+    if index <= 0:
+        return _error("index must be a positive 1-based position")
+    if not title and not overview:
+        return _error("Either title or overview must be provided")
+    return {"status": "ok", "index": index, "title": title, "overview": overview}
+
+
+@mcp.tool()
+def research_toggle_outline(collapsed: bool | None = None) -> dict[str, Any]:
+    """Collapse or expand the research outline card."""
+    return {"status": "ok", "collapsed": collapsed}
+
+
+@mcp.tool()
+def visualize_fullscreen(enter: bool) -> dict[str, Any]:
+    """Enter or exit fullscreen view of the current visualization."""
+    return {"status": "ok", "enter": enter}
+
+
+@mcp.tool()
+def visualize_show_code(show: bool) -> dict[str, Any]:
+    """Show or hide the underlying code of the current visualization."""
+    return {"status": "ok", "show": show}
+
+
+@mcp.tool()
+def visualize_copy_code() -> dict[str, Any]:
+    """Copy the underlying code of the current visualization to the clipboard."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def mastery_path_select(path_name: str) -> dict[str, Any]:
+    """Open a specific existing mastery path by name."""
+    if not path_name or not path_name.strip():
+        return _error("path_name must not be empty")
+    return {"status": "ok", "path_name": path_name}
+
+
+@mcp.tool()
+def mastery_path_continue(path_name: str) -> dict[str, Any]:
+    """Resume an existing mastery path by name."""
+    if not path_name or not path_name.strip():
+        return _error("path_name must not be empty")
+    return {"status": "ok", "path_name": path_name}
+
+
+@mcp.tool()
+def mastery_path_redo(path_name: str) -> dict[str, Any]:
+    """Reset an existing mastery path's progress."""
+    if not path_name or not path_name.strip():
+        return _error("path_name must not be empty")
+    return {"status": "ok", "path_name": path_name}
+
+
+@mcp.tool()
+def mastery_path_delete(path_name: str) -> dict[str, Any]:
+    """Permanently delete an existing mastery path."""
+    if not path_name or not path_name.strip():
+        return _error("path_name must not be empty")
+    return {"status": "ok", "path_name": path_name}
+
+
+@mcp.tool()
+def select_model(query: str) -> dict[str, Any]:
+    """Switch which LLM model the next message uses."""
+    if not query or not query.strip():
+        return _error("query must not be empty")
+    return {"status": "ok", "query": query}
+
+
+@mcp.tool()
+def select_persona(query: str = "") -> dict[str, Any]:
+    """Switch persona by name, or clear it if query is empty."""
+    return {"status": "ok", "query": query}
+
+
+@mcp.tool()
+def select_agent(query: str = "") -> dict[str, Any]:
+    """Switch the connected agent by name, or clear it if query is empty."""
+    return {"status": "ok", "query": query}
+
+
+@mcp.tool()
+def toggle_knowledge_base(query: str) -> dict[str, Any]:
+    """Toggle a knowledge base on/off by name."""
+    if not query or not query.strip():
+        return _error("query must not be empty")
+    return {"status": "ok", "query": query}
+
+
+@mcp.tool()
+def remove_attachment(all: bool = False) -> dict[str, Any]:
+    """Remove a queued attachment — the most recent one, or all of them."""
+    return {"status": "ok", "all": all}
+
+
+@mcp.tool()
+def copy_last_message() -> dict[str, Any]:
+    """Copy the assistant's last message to the clipboard."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
+def attach_book_reference(query: str) -> dict[str, Any]:
+    """Attach a book or book section as context to the user's next message."""
+    if not query or not query.strip():
+        return _error("query must not be empty")
+    return {"status": "ok", "query": query}
+
+
+@mcp.tool()
+def attach_question_bank_entry(query: str) -> dict[str, Any]:
+    """Attach a saved question-bank entry as context to the user's next message."""
+    if not query or not query.strip():
+        return _error("query must not be empty")
+    return {"status": "ok", "query": query}
 
 
 @mcp.tool()
