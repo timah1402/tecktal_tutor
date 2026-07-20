@@ -239,6 +239,29 @@ export function dispatchUiContext(summary: string): void {
   );
 }
 
+// Fired by VoiceCallContext's answer_inline_question / submit_inline_answers
+// tool handlers. Only the most-recently-mounted, still-unresolved
+// AskUserOptions card reacts — same "active instance" pattern as quiz. This
+// is the inline Q&A card the agent uses mid-conversation (mastery-path
+// checkpoints, clarifying questions, etc.) — distinct from a standalone
+// quiz/research/visualization.
+export const INLINE_QUESTION_ACTION_EVENT = "deeptutor:inline-question-action";
+export type InlineQuestionAction = "answer" | "submit";
+
+export interface InlineQuestionActionPayload {
+  text?: string;
+}
+
+export function dispatchInlineQuestionAction(
+  action: InlineQuestionAction,
+  payload?: InlineQuestionActionPayload,
+): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(INLINE_QUESTION_ACTION_EVENT, { detail: { action, payload } }),
+  );
+}
+
 // Fired by VoiceCallContext's open_upload tool handler so the composer's
 // existing file input (ChatComposer's `handlePickFiles`) opens the OS file
 // picker exactly as if the user had clicked the attach/paperclip button

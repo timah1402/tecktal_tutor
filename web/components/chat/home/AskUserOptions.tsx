@@ -9,6 +9,18 @@ import {
   shouldAppendEventContent,
 } from "@/lib/stream";
 import type { StreamEvent } from "@/lib/unified-ws";
+import {
+  INLINE_QUESTION_ACTION_EVENT,
+  type InlineQuestionAction,
+  type InlineQuestionActionPayload,
+  dispatchUiContext,
+} from "@/context/app-shell-storage";
+
+// Tracks the most-recently-mounted, still-unresolved InteractiveAskUserCard
+// so a voice-triggered answer/submit (dispatched globally, with no idea
+// which card is "current") only acts on the one the user is actually
+// looking at — same pattern as QuizViewer's activeQuizInstanceId.
+let activeAskUserInstanceId = 0;
 
 /**
  * v3 ``ask_user`` payload. Mirrors ``deeptutor.tools.ask_user.AskUserPayload``.
@@ -456,6 +468,12 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
 }) {
   const { t } = useTranslation();
   const totalQuestions = payload.questions.length;
+  const instanceIdRef = useRef(0);
+
+  useEffect(() => {
+    activeAskUserInstanceId += 1;
+    instanceIdRef.current = activeAskUserInstanceId;
+  }, []);
 
   // Picked option labels per question. Single-select questions hold at
   // most one entry; multi-select questions accumulate toggled labels.
@@ -565,6 +583,87 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
     setCustomText((prev) => ({ ...prev, [qid]: text }));
     setCustomSelected((prev) => ({ ...prev, [qid]: true }));
   }, []);
+
+  // Ground the realtime voice model in the fact that this question is
+  // pending on screen (see UI_CONTEXT_EVENT's doc comment in
+  // app-shell-storage.ts) — otherwise a spoken answer has nothing to act
+  // on. Re-announces whenever the active tab changes on a multi-question
+  // card. Skipped once submitted.
+  useEffect(() => {
+    if (instanceIdRef.current !== activeAskUserInstanceId) return;
+    if (submitted || !activeQuestion) return;
+    const optionsText = activeQuestion.options.length
+      ? activeQuestion.options
+          .map((opt, i) => `${LETTERS[i]}) ${opt.label}`)
+          .join(", ")
+      : null;
+    dispatchUiContext(
+      `A question card is currently open on screen waiting for an answer` +
+        (totalQuestions > 1
+          ? ` (question ${activeIdx + 1} of ${totalQuestions})`
+          : "") +
+        `: "${activeQuestion.prompt}"` +
+        (optionsText ? ` Options: ${optionsText}.` : "") +
+        (activeQuestion.allow_free_text
+          ? " A free-text answer is also accepted."
+          : "") +
+        ` The user can answer THIS by voice using answer_inline_question ` +
+        `(pass the option letter/label or free text) and ` +
+        `submit_inline_answers — do not answer it as a normal chat message ` +
+        `or start something unrelated instead.`,
+    );
+  }, [activeQuestion, activeIdx, totalQuestions, submitted]);
+
+  // Voice-triggered answer/submit (answer_inline_question /
+  // submit_inline_answers tools, see VoiceCallContext.tsx) — only the
+  // currently-active, unresolved instance reacts.
+  useEffect(() => {
+    function onInlineQuestionAction(event: Event) {
+      if (instanceIdRef.current !== activeAskUserInstanceId) return;
+      if (submitted || !activeQuestion) return;
+      const detail = (
+        event as CustomEvent<{
+          action: InlineQuestionAction;
+          payload?: InlineQuestionActionPayload;
+        }>
+      ).detail;
+      switch (detail?.action) {
+        case "answer": {
+          const text = detail.payload?.text?.trim();
+          if (!text) break;
+          const letterIdx = LETTERS.indexOf(text.toUpperCase());
+          const byLetter =
+            text.length === 1 && letterIdx >= 0
+              ? activeQuestion.options[letterIdx]
+              : undefined;
+          const byLabel = activeQuestion.options.find(
+            (opt) => opt.label.trim().toLowerCase() === text.toLowerCase(),
+          );
+          const matched = byLetter ?? byLabel;
+          if (matched) {
+            pickOption(activeQuestion, matched.label);
+          } else if (activeQuestion.allow_free_text) {
+            updateCustomText(activeQuestion.id, text);
+          }
+          break;
+        }
+        case "submit":
+          handleSubmit();
+          break;
+        default:
+          break;
+      }
+    }
+    window.addEventListener(
+      INLINE_QUESTION_ACTION_EVENT,
+      onInlineQuestionAction,
+    );
+    return () =>
+      window.removeEventListener(
+        INLINE_QUESTION_ACTION_EVENT,
+        onInlineQuestionAction,
+      );
+  }, [activeQuestion, submitted, pickOption, updateCustomText, handleSubmit]);
 
   return (
     <div className="mt-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_14px_rgba(0,0,0,0.04)]">

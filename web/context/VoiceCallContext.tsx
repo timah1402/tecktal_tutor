@@ -37,6 +37,7 @@ import {
   dispatchResearchOutlineAction,
   dispatchVisualizeAction,
   dispatchMasteryPathRefresh,
+  dispatchInlineQuestionAction,
   UI_CONTEXT_EVENT,
 } from "@/context/app-shell-storage";
 import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
@@ -1118,6 +1119,15 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
             };
           }
         }
+        case "answer_inline_question": {
+          const text = String(args.text || "").trim();
+          if (!text) return { status: "error", message: "text was empty." };
+          dispatchInlineQuestionAction("answer", { text });
+          return { status: "ok" };
+        }
+        case "submit_inline_answers":
+          dispatchInlineQuestionAction("submit");
+          return { status: "ok" };
         case "get_memory_overview":
           // Pure data fetch, no browser-side effect — the MCP round-trip
           // (executeVoiceAction above) already did the real work and

@@ -80,6 +80,17 @@ const VisualizationViewer = dynamic(
   { ssr: false },
 );
 
+// Structured-artifact capabilities whose planning/tool-call trace is
+// internal bookkeeping, not something a learner should have to parse — see
+// the AssistantActivity render condition below for the full rationale.
+const GENERATIVE_CAPABILITIES = new Set([
+  "deep_solve",
+  "deep_question",
+  "deep_research",
+  "visualize",
+  "mastery_path",
+]);
+
 interface ChatMessageItem {
   id?: number;
   role: "user" | "assistant" | "system";
@@ -392,14 +403,18 @@ const AssistantMessage = memo(function AssistantMessage({
           ("DeepTutor Exploring… · 8s" → "DeepTutor responded. · 10s") with
           the exploring trace nested beneath it — expanded while DeepTutor is
           still working, collapsed once it settles into the final answer.
-          Skipped for Deep Solve and Deep Question (quiz): their planning/
-          step tool calls (solve_plan, solve_finish_step, the quiz template
-          plan) are internal bookkeeping, not something a learner should
-          have to parse — they should just see the step-by-step resolution
-          or the finished quiz stream in directly (paired with the spoken
-          narration in voice mode), not a trace of the tool calls that
-          produced it. */}
-      {msg.capability !== "deep_solve" && msg.capability !== "deep_question" && (
+          Shown only for plain chat, where "it's searching the web / your
+          knowledge base" is genuinely useful context. Skipped for every
+          structured-artifact capability (solve, quiz, research, visualize,
+          mastery path): their planning/tool-call steps (solve_plan,
+          mastery_status/mastery_build, the quiz template plan, the
+          research outline's own tool calls, etc.) are internal bookkeeping,
+          not something a learner should have to parse — they should just
+          see the step-by-step resolution, the finished quiz/report/
+          visualization/path result stream in directly (paired with the
+          spoken narration in voice mode), not a trace of the tool calls
+          that produced it. */}
+      {!GENERATIVE_CAPABILITIES.has(msg.capability ?? "") && (
         <AssistantActivity
           events={events}
           isStreaming={isStreaming}

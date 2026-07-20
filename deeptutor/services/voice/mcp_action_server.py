@@ -476,6 +476,20 @@ def attach_question_bank_entry(query: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+def answer_inline_question(text: str) -> dict[str, Any]:
+    """Answer the inline question card currently waiting on screen."""
+    if not text or not text.strip():
+        return _error("text must not be empty")
+    return {"status": "ok", "text": text}
+
+
+@mcp.tool()
+def submit_inline_answers() -> dict[str, Any]:
+    """Submit the inline question card currently waiting on screen."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
 def get_memory_overview() -> dict[str, Any]:
     """Fetch a live summary of the current user's Memory page.
 
