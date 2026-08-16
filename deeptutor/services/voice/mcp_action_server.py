@@ -460,6 +460,12 @@ def copy_last_message() -> dict[str, Any]:
 
 
 @mcp.tool()
+def read_last_answer() -> dict[str, Any]:
+    """Fetch the assistant's last written answer so it can be read aloud."""
+    return {"status": "ok"}
+
+
+@mcp.tool()
 def attach_book_reference(query: str) -> dict[str, Any]:
     """Attach a book or book section as context to the user's next message."""
     if not query or not query.strip():

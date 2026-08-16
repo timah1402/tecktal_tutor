@@ -483,10 +483,14 @@ export default function VisualizationViewer({
     if (instanceIdRef.current !== activeVisualizeInstanceId) return;
     if (isManimResult(result)) return;
     const description = result.analysis?.description?.trim();
+    const dataDescription = result.analysis?.data_description?.trim();
+    const rationale = result.analysis?.rationale?.trim();
     dispatchUiContext(
       `A visualization is currently open on screen (${result.render_type} ` +
-        `format)${description ? `: ${description}` : ""}. The user can ` +
-        `interact with THIS visualization by voice using ` +
+        `format)${description ? `: ${description}` : ""}.` +
+        `${dataDescription ? ` Data shown: ${dataDescription}.` : ""}` +
+        `${rationale ? ` Why this form was chosen: ${rationale}.` : ""} The ` +
+        `user can interact with THIS visualization by voice using ` +
         `visualize_fullscreen, visualize_show_code, visualize_copy_code — ` +
         `do NOT generate a new visualization (switch_capability) for ` +
         `requests about this one; only do that if the user clearly asks ` +

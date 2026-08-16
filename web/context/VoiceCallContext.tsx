@@ -379,7 +379,10 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   // browser can navigate its own router or mutate its own React state, so
   // that part can't move server-side no matter how the validation is done.
   const handleFunctionCall = useCallback(
-    async (name: string, args: Record<string, unknown>): Promise<{ status: string; message?: string }> => {
+    async (
+      name: string,
+      args: Record<string, unknown>,
+    ): Promise<{ status: string; message?: string; text?: string }> => {
       const result = await executeVoiceAction(name, args);
       if (result.status !== "ok") {
         return { status: "error", message: result.message };
@@ -1054,6 +1057,20 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
               message: err instanceof Error ? err.message : "Failed to copy to clipboard.",
             };
           }
+        }
+        case "read_last_answer": {
+          if (!chat) return { status: "error", message: "No active chat." };
+          const { messages } = buildVisiblePath(
+            chat.state.messages,
+            chat.state.selectedBranches,
+          );
+          const lastAssistant = [...messages]
+            .reverse()
+            .find((m) => m.role === "assistant" && m.content?.trim());
+          if (!lastAssistant) {
+            return { status: "error", message: "There's no assistant message to read yet." };
+          }
+          return { status: "ok", text: lastAssistant.content };
         }
         case "attach_book_reference": {
           const query = String(args.query || "").trim();

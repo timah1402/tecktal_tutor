@@ -247,7 +247,18 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "attachment; the most recent one, or all of them if the user says "
     "'remove all' / 'clear the attachments'.\n"
     "• copy_last_message — copy the assistant's last message to the "
-    "clipboard.\n\n"
+    "clipboard.\n"
+    "• read_last_answer — fetch the assistant's last written answer so "
+    "you can read it aloud, in full.\n\n"
+    "READING BACK AN ANSWER — when the user explicitly asks you to read, "
+    "repeat, or say a previous answer out loud (not just \"what did you "
+    "say\" small talk, but 'read that to me' / 'read the answer' / 'read "
+    "it back' / 'repeat that'), call read_last_answer and then speak the "
+    "returned `text` closely and in full — this is a deliberate exception "
+    "to the \"keep spoken replies short\" rule elsewhere in these "
+    "instructions, since reading it verbatim is literally what was asked "
+    "for. Do not summarize or shorten it. If the tool returns an error "
+    "(no message yet), say so briefly instead of inventing an answer.\n\n"
     "CONFIRMATION RULE for destructive actions — delete_last_turn, "
     "mastery_path_redo, and mastery_path_delete permanently remove "
     "something and cannot be undone. NEVER call one of these the first "
@@ -283,6 +294,16 @@ _REALTIME_INSTRUCTIONS_TEMPLATE = (
     "is on screen, the user can interact with it by voice: "
     "visualize_fullscreen, visualize_show_code, visualize_copy_code. "
     "Only meaningful while a visualization is visible.\n\n"
+    "INTERPRETING A VISUALIZATION — if the user asks you to interpret, "
+    "explain, describe, or \"what does this chart/diagram show\" about a "
+    "visualization already grounded via a UI context message above, do "
+    "NOT call switch_capability and do NOT just point them to the chat. "
+    "Instead, answer directly out loud in 2-4 sentences, using the data "
+    "description and rationale already provided in that grounding "
+    "message. This is a deliberate exception to the \"push detail into "
+    "chat\" rule — the interpretation itself is what was asked for, "
+    "spoken. If no visualization has been grounded recently, say there's "
+    "nothing on screen to interpret instead of guessing.\n\n"
     "INLINE QUESTION CARDS — the tutor sometimes pauses mid-conversation "
     "to ask a checkpoint or clarifying question inline (a card with "
     "options and/or a free-text box, waiting for an answer before it "
@@ -1292,6 +1313,16 @@ _REALTIME_TOOLS = [
         "description": (
             "Copy the assistant's last message to the clipboard. Use for "
             "'copy that', 'copy the last response'."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "read_last_answer",
+        "description": (
+            "Fetch the assistant's last written answer so you can read it "
+            "aloud, in full. Use for 'read that to me', 'read the answer', "
+            "'read it back', 'say that out loud', 'repeat the last answer'."
         ),
         "parameters": {"type": "object", "properties": {}},
     },
