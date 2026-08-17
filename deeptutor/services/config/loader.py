@@ -270,6 +270,10 @@ def get_agent_params(module_name: str) -> dict:
     return {
         "temperature": module_config.get("temperature", module_defaults["temperature"]),
         "max_tokens": module_config.get("max_tokens", module_defaults["max_tokens"]),
+        # Optional per-capability model pin (e.g. "gpt-5" for visualize) —
+        # None means "use whichever model is globally active", the existing
+        # default behavior for every capability that doesn't set this.
+        "model": module_config.get("model") or None,
     }
 
 

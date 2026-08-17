@@ -167,9 +167,11 @@ class VisualizeCapability(BaseCapability):
                     source=self.name,
                     stage="reviewing",
                 )
-            elif analysis.render_type == "html":
-                # html documents are 8-16k tokens; we don't run them through
-                # the repair loop — fall back to a minimal renderable template.
+            elif analysis.render_type in ("html", "react"):
+                # html/react documents are 8-16k tokens; we don't run them
+                # through the repair loop — fall back to a minimal renderable
+                # template (react's fallback is plain html, same as html's —
+                # a broken interactive page degrades to a static one).
                 final_code = build_fallback_html(
                     title=analysis.description or "Visualization",
                     summary=analysis.data_description,
@@ -251,7 +253,7 @@ class VisualizeCapability(BaseCapability):
             lang_tag = "svg"
         elif analysis.render_type == "mermaid":
             lang_tag = "mermaid"
-        elif analysis.render_type == "html":
+        elif analysis.render_type in ("html", "react"):
             lang_tag = "html"
         else:
             lang_tag = "javascript"

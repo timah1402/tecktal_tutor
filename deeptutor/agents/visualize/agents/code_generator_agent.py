@@ -39,8 +39,9 @@ class CodeGeneratorAgent(BaseAgent):
         # base + general rules, plus exactly one format-specific rule block.
         # This keeps the per-call prompt dense with the rules that matter for
         # *this* format without ever paying for the union of all four.
-        # render_type here is always one of svg/chartjs/mermaid/html — manim
-        # is dispatched away in the capability layer before code generation.
+        # render_type here is always one of svg/chartjs/mermaid/html/react —
+        # manim is dispatched away in the capability layer before code
+        # generation.
         system_parts = (
             self.get_prompt("system_base"),
             self.get_prompt("rules_general"),
@@ -79,17 +80,20 @@ class CodeGeneratorAgent(BaseAgent):
             lang_hint = "svg"
         elif analysis.render_type == "mermaid":
             lang_hint = "mermaid"
-        elif analysis.render_type == "html":
+        elif analysis.render_type in ("html", "react"):
+            # React output is still one self-contained HTML document (it just
+            # bootstraps React/Babel inside it), so it's fenced/extracted
+            # identically to plain html.
             lang_hint = "html"
         else:
             lang_hint = "javascript"
 
         extracted = extract_code_block(response, lang_hint) or extract_code_block(response)
 
-        # For html, the model sometimes returns the full document with no fence.
-        # `extract_code_block` will then return the trimmed raw response — accept
-        # it as long as it looks like an HTML document.
-        if analysis.render_type == "html" and not extracted:
+        # For html/react, the model sometimes returns the full document with no
+        # fence. `extract_code_block` will then return the trimmed raw response
+        # — accept it as long as it looks like an HTML document.
+        if analysis.render_type in ("html", "react") and not extracted:
             stripped = (response or "").strip()
             lowered = stripped.lower()
             if lowered.startswith("<!doctype") or lowered.startswith("<html"):
@@ -107,7 +111,7 @@ class CodeGeneratorAgent(BaseAgent):
                 end = lower.rfind("</svg>")
                 if start != -1 and end != -1 and end > start:
                     extracted = extracted[start : end + len("</svg>")]
-            elif analysis.render_type == "html":
+            elif analysis.render_type in ("html", "react"):
                 lower = extracted.lower()
                 start = lower.find("<!doctype")
                 if start == -1:

@@ -123,21 +123,40 @@ def adapt_chat_kwargs_to_responses(extra_kwargs: Mapping[str, Any]) -> dict[str,
     ``TypeError`` from ``responses.create`` before any HTTP request leaves the
     client. See DeepTutor#437.
 
+    Same problem, same fix, for ``response_format``: Chat Completions' JSON
+    mode (``{"type": "json_object"}`` etc., used by agents like visualize's
+    AnalysisAgent to force structured output) has no equivalent top-level
+    parameter in the Responses API — the SDK raises the exact same kind of
+    client-side ``TypeError`` for it as it did for the token-limit alias
+    before #437, just for a different key. The Responses API carries the
+    same shape nested under ``text.format`` instead. Without this, any
+    gpt-5.x/o1/o3/o4 call that requests JSON mode fails before a request is
+    even sent, and — because that TypeError isn't recognized as a
+    Chat-Completions-fallback case — surfaces as literal "Error calling
+    LLM: ..." text mistaken for the model's own response instead of a
+    clean error.
+
     Drops keys with ``None`` values to match the existing merge filter, and
-    only applies the alias when the caller did not already set the Responses
-    name explicitly.
+    only applies each alias when the caller did not already set the
+    Responses name explicitly.
     """
     result = {
         key: value
         for key, value in extra_kwargs.items()
-        if value is not None and key not in _CHAT_TOKEN_LIMIT_ALIASES
+        if value is not None
+        and key not in _CHAT_TOKEN_LIMIT_ALIASES
+        and key != "response_format"
     }
-    if "max_output_tokens" in result:
-        return result
+    if "max_output_tokens" not in result:
+        for key in _CHAT_TOKEN_LIMIT_ALIASES:
+            value = extra_kwargs.get(key)
+            if value is not None:
+                result["max_output_tokens"] = value
+                break
 
-    for key in _CHAT_TOKEN_LIMIT_ALIASES:
-        value = extra_kwargs.get(key)
-        if value is not None:
-            result["max_output_tokens"] = value
-            break
+    if "text" not in result:
+        response_format = extra_kwargs.get("response_format")
+        if response_format is not None:
+            result["text"] = {"format": response_format}
+
     return result

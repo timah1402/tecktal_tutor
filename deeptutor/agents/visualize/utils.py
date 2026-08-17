@@ -192,6 +192,24 @@ def validate_visualization(code: str, render_type: str) -> tuple[bool, str]:
                 "SVG root is missing a viewBox attribute (must be camelCase "
                 "`viewBox`, required for responsive scaling)."
             )
+        # Catch un-evaluated arithmetic left in a numeric attribute (e.g.
+        # width="9*9" instead of width="81") — SVG attributes aren't a
+        # scripting context, so this renders as an invisible/zero-size
+        # element rather than an error, making it an easy way to silently
+        # ship a broken figure.
+        numeric_attrs = ("width", "height", "x", "y", "cx", "cy", "r", "rx", "ry")
+        for el in root.iter():
+            for attr_name in numeric_attrs:
+                value = el.attrib.get(attr_name)
+                if value and re.search(r"\d\s*[*/]\s*\d", value):
+                    tag = el.tag.split("}")[-1]
+                    return False, (
+                        f"Un-evaluated arithmetic expression found in "
+                        f"<{tag} {attr_name}=\"{value}\">  — SVG attributes "
+                        f"must be pre-computed literal numbers, not "
+                        f"expressions like '9*9'; compute the result "
+                        f"yourself and write only the number."
+                    )
         return True, ""
 
     if render_type == "chartjs":
@@ -229,6 +247,40 @@ def validate_visualization(code: str, render_type: str) -> tuple[bool, str]:
         if is_valid_html_document(text):
             return True, ""
         return False, "Output does not look like a renderable HTML document."
+
+    if render_type == "react":
+        if not is_valid_html_document(text):
+            return False, "Output does not look like a renderable HTML document."
+        lowered = text.lower()
+        if "reactdom.createroot" not in lowered and "reactdom.render(" not in lowered:
+            return False, (
+                "React output must mount with ReactDOM.createRoot(...).render(...) "
+                "(React 18 API) — no root render call found."
+            )
+        # The single most common failure mode: a `text/babel` script tag with
+        # no Babel Standalone loaded to transpile it. The browser silently
+        # ignores a script type it doesn't recognize — no error, no console
+        # warning — so this renders as a completely blank page with nothing
+        # to signal why. Catch it deterministically here instead of shipping
+        # dead-on-arrival output.
+        if 'type="text/babel"' in text or "type='text/babel'" in text:
+            if "babel.min.js" not in lowered and "babel/standalone" not in lowered:
+                return False, (
+                    "React output uses <script type=\"text/babel\"> but never "
+                    "loads @babel/standalone/babel.min.js — without it the "
+                    "browser silently skips that script tag entirely and the "
+                    "page renders blank. Add the Babel Standalone <script> tag "
+                    "from the CDN allowlist before the text/babel block."
+                )
+        if re.search(r"^\s*import\s+.+\s+from\s+['\"]", text, re.MULTILINE) or re.search(
+            r"\brequire\(", text
+        ):
+            return False, (
+                "React output must not use import/require — there is no build "
+                "step; load React/ReactDOM/Babel from the CDN allowlist via "
+                "<script> tags instead."
+            )
+        return True, ""
 
     # Unknown render types are not gated.
     return True, ""

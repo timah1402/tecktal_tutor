@@ -15,13 +15,18 @@ class VisualizationAnalysis(BaseModel):
         "chartjs",
         "mermaid",
         "html",
+        "react",
         "manim_video",
         "manim_image",
     ] = Field(
         description=(
             "Render output: raw SVG, a Chart.js configuration, a Mermaid "
-            "diagram, a self-contained interactive HTML page, or a Manim "
-            "animation (video) / storyboard image."
+            "diagram, a self-contained interactive HTML page, a "
+            "self-contained React component (also delivered as one HTML "
+            "document, but built as idiomatic React/JSX rather than "
+            "freehand DOM manipulation — preferred for interactive/"
+            "stateful content), or a Manim animation (video) / storyboard "
+            "image."
         ),
     )
     description: str = Field(
@@ -38,7 +43,7 @@ class VisualizationAnalysis(BaseModel):
             "Chart.js chart type (bar, line, pie, doughnut, radar, etc.) when render_type is chartjs, "
             "Mermaid diagram type (flowchart, sequenceDiagram, mindmap, classDiagram, stateDiagram, etc.) "
             "when render_type is mermaid, or a short interaction tag (e.g. 'interactive', 'animation', "
-            "'walkthrough') when render_type is html."
+            "'walkthrough') when render_type is html or react."
         ),
     )
     visual_elements: list[str] = Field(

@@ -60,6 +60,7 @@ class VisualizeRequestConfig(BaseModel):
         "chartjs",
         "mermaid",
         "html",
+        "react",
         "manim_video",
         "manim_image",
     ] = "auto"

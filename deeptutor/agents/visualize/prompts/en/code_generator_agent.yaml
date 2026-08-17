@@ -5,7 +5,9 @@ system_base: |
 
   Output contract:
   - Output ONLY the code, wrapped in a single fenced code block with the right
-    language tag (```svg, ```javascript, ```mermaid, or ```html). No prose, no
+    language tag (```svg, ```javascript, ```mermaid, or ```html — react output
+    is ALSO a single ```html-tagged block, since it's delivered as one
+    self-contained HTML document that bootstraps React itself). No prose, no
     explanation, no second block.
   - The code must be complete and self-contained — it is rendered directly,
     with nothing prepended or appended.
@@ -29,6 +31,24 @@ rules_general: |
   - Sentence case everywhere (labels, headings, captions). Never Title Case,
     never ALL CAPS.
   - Every label must be readable: enough contrast, no text smaller than 11px.
+
+  Content correctness (applies to every render type, not just layout):
+  - Any number, formula, or labeled quantity you draw must be independently
+    recomputed and cross-checked against what it's attached to before you
+    finalize the output — do not just place a value that "looks about
+    right" for its position. A wrong-but-plausible-looking number (e.g. a
+    label swapped with a neighboring one) is worse than a simpler figure,
+    because it silently teaches the wrong fact.
+  - Concretely: if you draw a formula (e.g. a² + b² = c²) alongside actual
+    numeric instances of it, every instance must satisfy the formula
+    exactly — recompute each side and verify the equation holds with the
+    specific numbers you chose before writing them down, not just for the
+    symbolic form.
+  - When several labeled elements each derive from a different input (e.g.
+    one square per triangle side, one bar per data point), map each
+    label to its specific source explicitly while composing — do not
+    place labels by "this position roughly corresponds to that element"
+    memory, that is exactly how mislabeling happens.
 
 rules_svg: |
   Render type: SVG. The figure is inlined into the page (not an <img>), so it
@@ -81,6 +101,13 @@ rules_svg: |
   transition.
 
   Coordinate math — most SVG failures are arithmetic, so compute before drawing:
+  - Every numeric SVG attribute (width, height, x, y, cx, cy, r, points, d,
+    etc.) must be a literal final number, e.g. `width="81"` — NEVER an
+    unevaluated expression like `width="9*9"` or `width="9 * 9"`. SVG
+    attributes are not a scripting context; the renderer will not compute
+    that for you, so an expression left in an attribute makes that element
+    invisible or wrongly sized. Do the arithmetic yourself first, then
+    write only the resulting number.
   - Box width from the longest label: `width = max(title_chars*8, subtitle_chars*7) + 24`.
     A 100px box holds ~10 subtitle chars. Special characters (formulas, ∑, ₆,
     subscripts) are wider — add 30-50%.
@@ -103,6 +130,22 @@ rules_svg: |
   3. No unintended overlaps between unrelated boxes, labels, or arrows.
   4. `text-anchor="end"` extends LEFT from x — at small x it can run past x=0;
      prefer `text-anchor="start"` and right-align the column.
+
+  Geometric correctness checklist (any figure with numeric labels attached
+  to specific shapes — Pythagorean-style area diagrams, labeled data
+  points, dimensioned shapes, etc.) — verify before finalizing:
+  1. For each labeled sub-element, restate what its number is derived from
+     (e.g. "this square sits on the leg of length 4, so its area label
+     must be 4²=16") and confirm the label you actually wrote matches.
+  2. If a relationship is being illustrated (a² + b² = c², a sum, a ratio),
+     plug your own chosen numbers into it and confirm it's still true —
+     don't just reuse a textbook triple's *shape* while drifting on which
+     label goes where.
+  3. Larger squares/bars/segments must correspond to larger numbers and
+     vice versa — a visual size that contradicts its own label (e.g. the
+     smaller square labeled with the bigger number) is an immediate
+     giveaway of a mislabel, so treat that as a hard check, not a style
+     choice.
 
   Match the drawing to the teaching intent in `visual_genre`:
   - flowchart: sequential steps / decisions. Boxes + arrows, single direction
@@ -186,6 +229,74 @@ rules_html: |
   - Within these constraints, choose layout, color, and interaction freely to
     make the page clear, beautiful, and easy to learn from.
 
+rules_react: |
+  Render type: React. Output one complete, self-contained single-file HTML
+  page (same as HTML — wrap it in a single ```html fenced block) whose body
+  bootstraps and renders a real React component. This is the PREFERRED
+  interactive format — write idiomatic React (hooks, state, composed
+  components), not freehand imperative DOM manipulation.
+  - Include everything from `<!DOCTYPE html>` to `</html>`. `<script type=`
+    `"text/babel">` is INERT without Babel Standalone loaded — the browser
+    silently skips a script tag it doesn't recognize, so a missing Babel
+    script means your entire component never runs and the page renders
+    blank. To guarantee this never happens, copy this exact three-script
+    header verbatim, in this exact order, before your own `<script
+    type="text/babel">` block — do not paraphrase, reorder, or drop any of
+    the three lines (all three CDN URLs are on the allowlist:
+    cdn.jsdelivr.net, cdnjs.cloudflare.com, unpkg.com — anything else is
+    blocked, same as HTML):
+    ```html
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    ```
+    Put your component in `<script type="text/babel">` — Babel Standalone
+    transpiles JSX in the browser at load time, so no build step exists;
+    only ever write plain JSX inside that tag, never raw
+    `React.createElement` calls.
+  - Mount with `ReactDOM.createRoot(document.getElementById("root")).render(<App />)`
+    (React 18 API — do NOT use the legacy `ReactDOM.render`), where `#root` is
+    a `<div>` you declare in the body.
+  - Structure as composed function components with `useState`/`useEffect`/etc,
+    the way a real React codebase would — not one giant component with
+    inline manipulation. This is the whole point of choosing react over html:
+    cleaner state management produces more correct, more polished interactive
+    UI.
+  - Renders inside a sandboxed iframe (null origin), exactly like HTML. KaTeX
+    is auto-injected (`$...$` / `$$...$$`). Good picks for data-heavy pieces:
+    Chart.js (also load via `<script>` from the same CDN allowlist; wrap its
+    canvas in a small React component using a `ref` + `useEffect`) or plain
+    SVG returned from JSX.
+  - Geographic maps: fetch real topology, never hand-invent coordinates. US
+    states: `cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json` (d3.geoAlbersUsa).
+    World: `cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json`
+    (d3.geoNaturalEarth1). Key your data on the file's real feature name/id.
+  - The host auto-sizes the iframe to your content height — do not set a fixed
+    body height; use `max-width: 100%` and `box-sizing: border-box`.
+  - Follow-up questions: call `sendPrompt("a short question")` (e.g. from a
+    button's onClick) to drop that question into the chat composer. Use it
+    where a learner would naturally want to dig deeper.
+  - For a cyclic or staged process, build a stepper component: one panel per
+    stage held in state (`const [step, setStep] = useState(0)`), dots or pills
+    showing position, a Next handler that wraps from the last stage back to
+    the first.
+  - If the brief's `chart_type`/interaction tag is "animation", or the request
+    or description says things like animate / rotate / pulse / flow / orbit /
+    spin / float / twinkle: this page's whole job is to actually move, not to
+    sit still. Make it move on its own, autoplaying immediately on mount —
+    do NOT gate it behind a button unless the user also asked for play/pause
+    controls. Prefer a CSS `@keyframes` class toggled via `className`
+    (cheaper, smoother than JS-driven motion) for continuous/looping motion.
+    Animate `transform` and `opacity` only (rotate/translate/scale/fade) —
+    they don't affect layout, which keeps the page's measured height stable
+    while it moves. Never animate `width`/`height`/`top`/`left`/`margin`
+    directly. For motion driven by data or user input rather than a fixed
+    loop, drive it from state updates inside a `requestAnimationFrame` loop
+    (wrapped in `useEffect`, cleaned up on unmount) instead of `setInterval`.
+  - Within these constraints, choose component structure, color, and
+    interaction freely to make the page clear, beautiful, and easy to learn
+    from.
+
 user_template: |
   User request:
   {user_input}
@@ -204,3 +315,4 @@ user_template: |
   - Chart.js: ```javascript ... ```
   - Mermaid: ```mermaid ... ```
   - HTML: ```html ... ```
+  - React: ```html ... ``` (one self-contained document bootstrapping React)

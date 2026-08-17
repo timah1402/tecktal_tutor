@@ -3,7 +3,15 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
-import { Code2, Copy, Check, ExternalLink, Maximize2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Code2,
+  Copy,
+  Check,
+  ExternalLink,
+  Maximize2,
+  X,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Mermaid } from "@/components/Mermaid";
 import { prepareIframeHtml } from "@/lib/iframe-html";
@@ -123,8 +131,21 @@ function HtmlRenderer({ html }: { html: string }) {
   const { t } = useTranslation();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(560);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   const prepared = useMemo(() => prepareIframeHtml(html || ""), [html]);
+
+  // Reset the error banner when new content loads, so it doesn't carry over
+  // from a previous (different) visualization. Done during render — not in
+  // the effect below — per React's documented pattern for "adjust state
+  // when a prop changes" (avoids the extra render cycle a setState call
+  // inside an effect body would trigger). Uses state, not a ref, to track
+  // the previous value: refs may not be read/written during render.
+  const [prevPrepared, setPrevPrepared] = useState(prepared);
+  if (prevPrepared !== prepared) {
+    setPrevPrepared(prepared);
+    if (renderError !== null) setRenderError(null);
+  }
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -133,12 +154,19 @@ function HtmlRenderer({ html }: { html: string }) {
   }, [prepared]);
 
   // Listen for the iframe bridge: a sendPrompt() call (mirror into the composer
-  // via the shared window event) or a height report (grow to fit, no clipping).
+  // via the shared window event), a height report (grow to fit, no clipping),
+  // or an uncaught error/rejection inside the generated page (surface a
+  // fallback instead of leaving a silently blank iframe).
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       const iframe = iframeRef.current;
       if (!iframe || e.source !== iframe.contentWindow) return;
-      const data = e.data as { type?: string; text?: string; height?: number };
+      const data = e.data as {
+        type?: string;
+        text?: string;
+        height?: number;
+        message?: string;
+      };
       if (!data || typeof data !== "object") return;
       if (data.type === "dt:visualize-prompt" && data.text) {
         window.dispatchEvent(
@@ -149,11 +177,13 @@ function HtmlRenderer({ html }: { html: string }) {
         typeof data.height === "number"
       ) {
         setHeight(Math.min(2400, Math.max(240, Math.ceil(data.height) + 8)));
+      } else if (data.type === "dt:visualize-error") {
+        setRenderError(data.message || t("This visualization failed to render."));
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
+  }, [t]);
 
   const handleOpenInNewTab = () => {
     try {
@@ -185,12 +215,30 @@ function HtmlRenderer({ html }: { html: string }) {
         <ExternalLink size={10} strokeWidth={1.8} />
         {t("Open")}
       </button>
+      {renderError && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-lg border border-[var(--destructive)]/30 bg-[var(--card)] p-6 text-center">
+          <AlertTriangle
+            size={20}
+            strokeWidth={1.8}
+            className="text-[var(--destructive)]"
+          />
+          <p className="max-w-sm text-[13px] font-medium text-[var(--foreground)]">
+            {t("This visualization failed to render.")}
+          </p>
+          <p className="max-w-md text-[11.5px] text-[var(--muted-foreground)]">
+            {renderError}
+          </p>
+          <p className="text-[11px] text-[var(--muted-foreground)]/75">
+            {t("Try Show code below, or ask to regenerate it.")}
+          </p>
+        </div>
+      )}
       <iframe
         ref={iframeRef}
         title={t("HTML visualization")}
         sandbox="allow-scripts"
         className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)]"
-        style={{ minHeight: 320, height }}
+        style={{ minHeight: 320, height, visibility: renderError ? "hidden" : "visible" }}
       />
     </div>
   );
@@ -374,7 +422,7 @@ function SvgRenderer({ svg }: { svg: string }) {
 
 type TextResult = Extract<
   VisualizeResult,
-  { render_type: "svg" | "chartjs" | "mermaid" | "html" }
+  { render_type: "svg" | "chartjs" | "mermaid" | "html" | "react" }
 >;
 
 function renderTextVisualization(result: TextResult) {
@@ -384,7 +432,11 @@ function renderTextVisualization(result: TextResult) {
   if (result.render_type === "mermaid") {
     return <Mermaid chart={result.code.content} />;
   }
-  if (result.render_type === "html") {
+  if (result.render_type === "html" || result.render_type === "react") {
+    // React output is still delivered as one self-contained HTML document
+    // (React/ReactDOM/Babel bootstrapped from the CDN allowlist) — same
+    // iframe/sandbox contract as plain html, just written as idiomatic
+    // React/JSX by the model instead of freehand DOM manipulation.
     return <HtmlRenderer html={result.code.content} />;
   }
   return <ChartJsRenderer config={result.code.content} />;
@@ -443,6 +495,7 @@ export default function VisualizationViewer({
         case "fullscreen":
           if (
             result.render_type !== "html" &&
+            result.render_type !== "react" &&
             typeof detail.payload?.enter === "boolean"
           ) {
             setFullscreen(detail.payload.enter);
@@ -477,11 +530,32 @@ export default function VisualizationViewer({
 
   // Ground the realtime voice model in the fact that this visualization is
   // on screen (see UI_CONTEXT_EVENT's doc comment in app-shell-storage.ts)
-  // — otherwise "show me the code" has nothing to act on. Manim results
-  // don't support these controls, so they don't announce.
+  // — otherwise "show me the code" (or "interpret this") has nothing to act
+  // on. Manim results don't support the visualize_* interactive controls
+  // (fullscreen/show-code/copy-code), so their grounding omits that part,
+  // but they still need SOME grounding — omitting it entirely (as before)
+  // left "interpret this video" with nothing to interpret.
   useEffect(() => {
     if (instanceIdRef.current !== activeVisualizeInstanceId) return;
-    if (isManimResult(result)) return;
+    if (isManimResult(result)) {
+      const summary = result.manim.summary;
+      const summaryText = summary?.summary_text?.trim();
+      const generatedOutput = summary?.generated_output?.trim();
+      const keyPoints = summary?.key_points?.filter((p) => p.trim());
+      dispatchUiContext(
+        `A Manim ${result.manim.output_mode === "image" ? "storyboard image" : "animation video"} ` +
+          `is currently open on screen.` +
+          `${summaryText ? ` Summary: ${summaryText}.` : ""}` +
+          `${generatedOutput && !summaryText ? ` What it shows: ${generatedOutput}.` : ""}` +
+          `${keyPoints?.length ? ` Key points: ${keyPoints.join("; ")}.` : ""}` +
+          ` The user cannot control this one by voice (no fullscreen/show-code ` +
+          `tools apply to it) — do NOT generate a new visualization ` +
+          `(switch_capability) for requests about this one; only do that if ` +
+          `the user clearly asks for a different/new visualization on ` +
+          `another topic.`,
+      );
+      return;
+    }
     const description = result.analysis?.description?.trim();
     const dataDescription = result.analysis?.data_description?.trim();
     const rationale = result.analysis?.rationale?.trim();
@@ -505,7 +579,8 @@ export default function VisualizationViewer({
   // TypeScript narrows ``result`` to the text-only variant from here on.
   // HTML iframe already provides its own "Open in new tab" affordance; the
   // sandboxed iframe also doesn't behave well inside a re-rendered modal.
-  const supportsFullscreen = result.render_type !== "html";
+  const supportsFullscreen =
+    result.render_type !== "html" && result.render_type !== "react";
 
   const handleCopy = async () => {
     try {
@@ -522,7 +597,7 @@ export default function VisualizationViewer({
       {/* Visualization area */}
       <div
         className={`relative ${
-          result.render_type === "html"
+          result.render_type === "html" || result.render_type === "react"
             ? "overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]"
             : "overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] p-4"
         }`}
@@ -572,7 +647,9 @@ export default function VisualizationViewer({
               ? `Mermaid · ${result.analysis.chart_type || "diagram"}`
               : result.render_type === "html"
                 ? `HTML · ${result.analysis.chart_type || "interactive"}`
-                : `Chart.js · ${result.analysis.chart_type || "chart"}`}
+                : result.render_type === "react"
+                  ? `React · ${result.analysis.chart_type || "interactive"}`
+                  : `Chart.js · ${result.analysis.chart_type || "chart"}`}
         </span>
       </div>
 

@@ -57,6 +57,7 @@ import { BookmarkPlus, Download, PanelRight } from "lucide-react";
 import {
   useUnifiedChat,
   type MessageAttachment,
+  type MessageItem,
   type MessageRequestSnapshot,
 } from "@/context/UnifiedChatContext";
 import { useAppShell } from "@/context/AppShellContext";
@@ -1701,6 +1702,54 @@ export default function ChatPage() {
     [researchConfig, sendMessage, shouldAutoScrollRef],
   );
 
+  // Inline "Visualize this answer": generate a visualization from an
+  // existing message's content in place, without switching the composer's
+  // capability away from chat/research/whatever it currently is — mirrors
+  // handleConfirmOutline's use of requestSnapshotOverride above, but for a
+  // one-off capability run instead of a stored draft's replay. `ephemeralCapability`
+  // keeps this from overwriting the session's persisted default capability, and
+  // `inlineVisualizeSourceId` is how the resulting message gets nested back
+  // under `msg` in ChatMessageList instead of appearing as a new bubble.
+  const handleVisualizeMessage = useCallback(
+    (msg: MessageItem) => {
+      if (msg.id === undefined || !msg.content.trim()) return;
+      const requestSnapshotOverride: MessageRequestSnapshot = {
+        content: msg.content,
+        capability: "visualize",
+        enabledTools: [...state.enabledTools],
+        knowledgeBases: [...state.knowledgeBases],
+        language: state.language,
+        config: { render_mode: "auto" },
+        ...(state.personaSelection ? { persona: state.personaSelection } : {}),
+        ...(state.llmSelection ? { llmSelection: state.llmSelection } : {}),
+      };
+      sendMessage(
+        msg.content,
+        [],
+        { render_mode: "auto" },
+        undefined,
+        undefined,
+        {
+          displayUserMessage: false,
+          persistUserMessage: false,
+          requestSnapshotOverride,
+          ephemeralCapability: true,
+          inlineVisualizeSourceId: msg.id,
+        },
+      );
+      shouldAutoScrollRef.current = true;
+    },
+    [
+      sendMessage,
+      shouldAutoScrollRef,
+      state.enabledTools,
+      state.knowledgeBases,
+      state.language,
+      state.personaSelection,
+      state.llmSelection,
+    ],
+  );
+
   const handleRegenerateMessage = useCallback(() => {
     regenerateLastMessage();
   }, [regenerateLastMessage]);
@@ -2061,6 +2110,7 @@ export default function ChatPage() {
                   onEditMessage={editMessage}
                   onSwitchBranch={switchBranch}
                   onSubmitUserReply={submitUserReply}
+                  onVisualizeMessage={handleVisualizeMessage}
                 />
                 <div ref={messagesEndRef} className="h-px w-full shrink-0" />
               </div>

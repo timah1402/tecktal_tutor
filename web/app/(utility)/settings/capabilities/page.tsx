@@ -52,6 +52,13 @@ interface SolveExtras {
   max_replans: number;
 }
 
+interface VisualizeExtras {
+  // Raw provider model string (e.g. "gpt-5") pinning the visualize pipeline
+  // to a specific model regardless of whichever model is globally active
+  // elsewhere. Empty means "use the globally active model" (default).
+  model: string;
+}
+
 interface CapabilitiesSettingsDTO {
   chat: ChatBlock;
   solve: SimpleLLMBlock & SolveExtras;
@@ -60,6 +67,7 @@ interface CapabilitiesSettingsDTO {
   co_writer: SimpleLLMBlock;
   vision_solver: SimpleLLMBlock;
   math_animator: SimpleLLMBlock;
+  visualize: SimpleLLMBlock & VisualizeExtras;
 }
 
 function isValidCapabilitiesDTO(
@@ -194,6 +202,11 @@ export default function CapabilitiesSettingsPage() {
   ) {
     if (!settings) return;
     setSettings({ ...settings, [cap]: { ...settings[cap], ...value } });
+  }
+
+  function patchVisualize(value: Partial<SimpleLLMBlock & VisualizeExtras>) {
+    if (!settings) return;
+    setSettings({ ...settings, visualize: { ...settings.visualize, ...value } });
   }
 
   function patchSolveExtras(value: Partial<SolveExtras>) {
@@ -495,6 +508,40 @@ export default function CapabilitiesSettingsPage() {
       </SettingSection>
 
       <SettingSection
+        title={t("Visualize")}
+        description={t(
+          "Chart/diagram/animation generation pipeline.",
+        )}
+      >
+        <NumberRow
+          label={t("Temperature")}
+          value={settings.visualize.temperature}
+          onChange={(n) => patchVisualize({ temperature: n })}
+          min={0}
+          max={2}
+          step={0.05}
+          isFloat
+        />
+        <NumberRow
+          label={t("Max tokens")}
+          value={settings.visualize.max_tokens}
+          onChange={(n) => patchVisualize({ max_tokens: n })}
+          min={256}
+          max={200000}
+          step={100}
+        />
+        <TextRow
+          label={t("Model override")}
+          help={t(
+            "Pin visualize to a specific model (e.g. \"gpt-5\") regardless of whichever model is globally active. Leave empty to use the globally active model. The model must be supported by your currently active provider/API key.",
+          )}
+          value={settings.visualize.model}
+          onChange={(v) => patchVisualize({ model: v })}
+          placeholder={t("Globally active model")}
+        />
+      </SettingSection>
+
+      <SettingSection
         title={t("Co-writer")}
         description={t("Selection edit / inline rewrite agent.")}
       >
@@ -561,6 +608,32 @@ function NumberRow({
             if (!Number.isNaN(n)) onChange(n);
           }}
           className="w-28 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-right text-[12px] outline-none focus:border-[var(--primary)]"
+        />
+      }
+    />
+  );
+}
+
+interface TextRowProps {
+  label: string;
+  help?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}
+
+function TextRow({ label, help, value, onChange, placeholder }: TextRowProps) {
+  return (
+    <SettingRow
+      title={label}
+      description={help}
+      control={
+        <input
+          type="text"
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-48 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-right text-[12px] outline-none focus:border-[var(--primary)]"
         />
       }
     />

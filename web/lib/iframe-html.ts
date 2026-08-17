@@ -95,6 +95,14 @@ const BRIDGE_SCRIPT =
   "<script data-dt-bridge>" +
   "(function(){" +
   'window.sendPrompt=function(t){try{parent.postMessage({type:"dt:visualize-prompt",text:String(t||"")},"*")}catch(e){}};' +
+  // A generated page failing entirely (a JSX syntax error Babel chokes on,
+  // an uncaught exception during React's first render, a promise rejection
+  // before anything painted) previously just left the iframe blank with no
+  // signal to the user or to us why. Report it instead of failing silently
+  // — the host renders a fallback card instead of an empty box.
+  'var errSent=false;function re(msg){if(errSent)return;errSent=true;try{parent.postMessage({type:"dt:visualize-error",message:String(msg||"Unknown error")},"*")}catch(e){}}' +
+  'window.addEventListener("error",function(e){re(e.message||(e.error&&e.error.message))});' +
+  'window.addEventListener("unhandledrejection",function(e){re(e.reason&&e.reason.message?e.reason.message:String(e.reason))});' +
   // +8px buffer: scrollHeight is a pure layout measurement and never accounts
   // for CSS `transform` (rotate/translate/scale) — those paint outside the
   // element's layout box without changing it. An animated element near an

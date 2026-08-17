@@ -81,6 +81,13 @@ export interface StartTurnMessage {
    *  attaches at this exact parent — creating a sibling rather than
    *  appending to the session tail. */
   parent_message_id?: number | null;
+  /** Inline "Visualize this answer": don't let this one-off capability run
+   *  overwrite the session's persisted default capability preference. */
+  ephemeral_capability?: boolean;
+  /** Inline "Visualize this answer": id of the existing message this turn
+   *  visualizes, stored on the resulting assistant message's metadata so
+   *  the frontend can render it nested under that source message. */
+  inline_visualize_source_id?: number;
 }
 
 export interface SubscribeTurnMessage {

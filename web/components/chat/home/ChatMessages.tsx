@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BarChart3,
   BookOpen,
   Bot,
   Brain,
@@ -100,6 +101,9 @@ interface ChatMessageItem {
   attachments?: MessageAttachment[];
   requestSnapshot?: MessageRequestSnapshot;
   parentMessageId?: number | null;
+  /** Inline "Visualize this answer": id of the message this one visualizes.
+   *  See MessageItem.inlineVisualizeSourceId in UnifiedChatContext.tsx. */
+  inlineVisualizeSourceId?: number;
 }
 
 interface NotebookReferenceGroup {
@@ -292,6 +296,7 @@ const AssistantMessage = memo(function AssistantMessage({
   onConfirmOutline,
   onSubmitUserReply,
   researchRequestSnapshot,
+  inlineVisualizations,
 }: {
   msg: { content: string; capability?: string; events?: StreamEvent[] };
   isStreaming?: boolean;
@@ -299,6 +304,10 @@ const AssistantMessage = memo(function AssistantMessage({
   sessionId?: string | null;
   language?: string;
   researchRequestSnapshot?: MessageRequestSnapshot | null;
+  /** Inline "Visualize this answer" results generated from this message,
+   *  rendered nested underneath it instead of as their own top-level
+   *  bubbles — see ChatMessageList's inlineVisualizeMap. */
+  inlineVisualizations?: Array<{ content: string; events?: StreamEvent[] }>;
   onConfirmOutline?: (
     outline: Array<{ title: string; overview: string }>,
     topic: string,
@@ -364,6 +373,35 @@ const AssistantMessage = memo(function AssistantMessage({
     if (msg.capability !== "visualize" || !resultEvent) return null;
     return extractVisualizeResult(resultEvent.metadata);
   }, [msg.capability, resultEvent]);
+
+  // While a visualize turn is still generating, its trace (analyzing /
+  // generating / reviewing, or the manim concept_analysis / concept_design /
+  // code_generation stages) is deliberately hidden — see the
+  // GENERATIVE_CAPABILITIES comment on AssistantActivity below — so without
+  // this the user stares at a blank bubble for however long code generation
+  // takes. Surface just the latest status line instead of the full trace.
+  const visualizeStatusText = useMemo(() => {
+    if (msg.capability !== "visualize" || !isStreaming) return null;
+    if (visualizeResult || mathAnimatorResult) return null;
+    const events = msg.events ?? [];
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      const ev = events[i];
+      if ((ev.type === "thinking" || ev.type === "progress") && ev.content?.trim()) {
+        return ev.content.trim();
+      }
+    }
+    return null;
+  }, [msg.capability, msg.events, isStreaming, visualizeResult, mathAnimatorResult]);
+
+  const inlineVisualizeResults = useMemo(() => {
+    if (!inlineVisualizations?.length) return [];
+    return inlineVisualizations
+      .map((item) => {
+        const ev = item.events?.find((e) => e.type === "result") ?? null;
+        return ev ? extractVisualizeResult(ev.metadata) : null;
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+  }, [inlineVisualizations]);
 
   // Detect the ``ask_user`` terminator payload: when the assistant turn
   // ended via the ``ask_user`` tool, this is the question the user is
@@ -463,6 +501,11 @@ const AssistantMessage = memo(function AssistantMessage({
             />
           ) : null}
         </>
+      ) : visualizeStatusText ? (
+        <div className="flex items-center gap-2 text-[13px] text-[var(--muted-foreground)]">
+          <Loader2 size={14} strokeWidth={2} className="animate-spin" />
+          <span>{visualizeStatusText}</span>
+        </div>
       ) : mathAnimatorResult ? (
         <MathAnimatorViewer result={mathAnimatorResult} />
       ) : visualizeResult ? (
@@ -530,6 +573,16 @@ const AssistantMessage = memo(function AssistantMessage({
           }}
         />
       ) : null}
+      {/* Inline "Visualize this answer" results — generated from THIS
+          message without switching the composer's capability, so they
+          render nested here instead of as their own top-level bubble. */}
+      {inlineVisualizeResults.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {inlineVisualizeResults.map((result, idx) => (
+            <VisualizationViewer key={idx} result={result} />
+          ))}
+        </div>
+      )}
     </>
   );
 });
@@ -1296,6 +1349,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onEditMessage,
   onSwitchBranch,
   onSubmitUserReply,
+  onVisualizeMessage,
 }: {
   messages: ChatMessageItem[];
   isStreaming: boolean;
@@ -1331,6 +1385,10 @@ export const ChatMessageList = memo(function ChatMessageList({
           answers?: Array<{ questionId: string; text: string }>;
         },
   ) => void;
+  /** Inline "Visualize this answer": generate a visualization from this
+   *  message's content without switching the composer's capability. Absent
+   *  entirely means the button doesn't render. */
+  onVisualizeMessage?: (msg: ChatMessageItem) => void;
 }) {
   const { t } = useTranslation();
   // Visible path: when no branching has happened the result is identical
@@ -1392,6 +1450,35 @@ export const ChatMessageList = memo(function ChatMessageList({
     return { mergedByParent: map, followupIndices };
   }, [visibleMessages]);
 
+  // Inline "Visualize this answer": a visualize-capability message tagged
+  // with inlineVisualizeSourceId is dropped from the top-level row list and
+  // instead attached to (and rendered nested under) the source message it
+  // was generated from — matched by id, not by chain position, since this
+  // message's real parent_message_id chains onto the conversation tip like
+  // any normal send (see UnifiedChatContext's doc comment on the field for
+  // why the two must stay separate). If the source message can't be found
+  // (e.g. its branch isn't the one currently selected), the result is left
+  // as a normal top-level bubble rather than silently dropped.
+  const inlineVisualizeMap = useMemo(() => {
+    const idToIndex = new Map<number, number>();
+    visibleMessages.forEach((m, idx) => {
+      if (m.id !== undefined) idToIndex.set(m.id, idx);
+    });
+    const byParentIndex = new Map<number, ChatMessageItem[]>();
+    const consumedIndices = new Set<number>();
+    visibleMessages.forEach((m, idx) => {
+      if (m.role !== "assistant" || m.inlineVisualizeSourceId === undefined)
+        return;
+      const parentIdx = idToIndex.get(m.inlineVisualizeSourceId);
+      if (parentIdx === undefined || parentIdx === idx) return;
+      const arr = byParentIndex.get(parentIdx) ?? [];
+      arr.push(m);
+      byParentIndex.set(parentIdx, arr);
+      consumedIndices.add(idx);
+    });
+    return { byParentIndex, consumedIndices };
+  }, [visibleMessages]);
+
   const outlineStatusByIndex = useMemo(() => {
     const map = new Map<number, "editing" | "researching" | "done">();
     for (let i = 0; i < visibleMessages.length; i++) {
@@ -1435,6 +1522,10 @@ export const ChatMessageList = memo(function ChatMessageList({
         // into the parent (outline-preview) bubble.
         if (deepResearchMergeMap.followupIndices.has(originalIndex))
           return false;
+        // Drop inline-visualize result msgs — rendered nested under their
+        // source message instead (see inlineVisualizeMap).
+        if (inlineVisualizeMap.consumedIndices.has(originalIndex))
+          return false;
         return true;
       })
       .map(({ msg, originalIndex }) => {
@@ -1448,20 +1539,29 @@ export const ChatMessageList = memo(function ChatMessageList({
               content: merged.mergedContent,
             }
           : msg;
+        const inlineVisualizations = inlineVisualizeMap.byParentIndex.get(
+          originalIndex,
+        );
         if (effectiveMsg.role === "user") {
           return {
             msg: effectiveMsg,
             originalIndex,
             pairedUserMessage: null as ChatMessageItem | null,
+            inlineVisualizations,
           };
         }
         const pairedUserMessage =
           [...visibleMessages.slice(0, originalIndex)]
             .reverse()
             .find((previous) => previous.role === "user") ?? null;
-        return { msg: effectiveMsg, originalIndex, pairedUserMessage };
+        return {
+          msg: effectiveMsg,
+          originalIndex,
+          pairedUserMessage,
+          inlineVisualizations,
+        };
       });
-  }, [visibleMessages, deepResearchMergeMap]);
+  }, [visibleMessages, deepResearchMergeMap, inlineVisualizeMap]);
 
   const lastRenderedAssistantIndex = useMemo(() => {
     for (let idx = messageRows.length - 1; idx >= 0; idx -= 1) {
@@ -1480,7 +1580,7 @@ export const ChatMessageList = memo(function ChatMessageList({
 
   return (
     <>
-      {messageRows.map(({ msg, originalIndex, pairedUserMessage }) => {
+      {messageRows.map(({ msg, originalIndex, pairedUserMessage, inlineVisualizations }) => {
         const i = originalIndex;
         if (msg.role === "user") {
           const sib =
@@ -1536,6 +1636,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                 researchRequestSnapshot={
                   pairedUserMessage?.requestSnapshot ?? null
                 }
+                inlineVisualizations={inlineVisualizations}
               />
             </InlineFileCardProvider>
             <LiveVoiceNarrator
@@ -1601,6 +1702,16 @@ export const ChatMessageList = memo(function ChatMessageList({
                       conversationKey={sessionId ?? undefined}
                     />
                   )}
+                  {showActions &&
+                    msg.capability !== "visualize" &&
+                    msg.id !== undefined &&
+                    onVisualizeMessage && (
+                      <RoughActionButton
+                        icon={BarChart3}
+                        label={t("Visualize")}
+                        onClick={() => onVisualizeMessage(msg)}
+                      />
+                    )}
                   {showActions && showRegenerate && (
                     <RoughActionButton
                       icon={RefreshCcw}

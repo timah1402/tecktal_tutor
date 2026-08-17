@@ -791,18 +791,25 @@ class TurnRuntimeManager:
             }
         payload = {**payload, "llm_selection": llm_selection}
         await self._recover_orphan_running_turns_for_session(session["id"])
-        preference_update: dict[str, Any] = {
-            "capability": capability,
-            "tools": list(payload.get("tools") or []),
-            "knowledge_bases": list(payload.get("knowledge_bases") or []),
-            "language": str(payload.get("language") or "en"),
-        }
-        if llm_selection:
-            preference_update["llm_selection"] = llm_selection
-        if persona_explicit:
-            # Persist explicit set AND explicit clear ("" = back to Default).
-            preference_update["persona"] = persona_pref
-        await self.store.update_session_preferences(session["id"], preference_update)
+        # Inline "Visualize this answer" (and similar one-off capability
+        # runs) explicitly opt out of becoming the session's new persisted
+        # default — without this, running visualize once on an existing chat
+        # answer would silently flip the whole session over to visualize
+        # mode, which is exactly what routing through a capability override
+        # instead of switch_capability was meant to avoid.
+        if not payload.get("ephemeral_capability"):
+            preference_update: dict[str, Any] = {
+                "capability": capability,
+                "tools": list(payload.get("tools") or []),
+                "knowledge_bases": list(payload.get("knowledge_bases") or []),
+                "language": str(payload.get("language") or "en"),
+            }
+            if llm_selection:
+                preference_update["llm_selection"] = llm_selection
+            if persona_explicit:
+                # Persist explicit set AND explicit clear ("" = back to Default).
+                preference_update["persona"] = persona_pref
+            await self.store.update_session_preferences(session["id"], preference_update)
         turn = await self.store.create_turn(session["id"], capability=capability)
         execution = _TurnExecution(
             turn_id=turn["id"],
@@ -1694,6 +1701,21 @@ class TurnRuntimeManager:
             # rounds (their text stayed in the trace, never the answer).
             assistant_content = _persisted_answer()
 
+            # Inline "Visualize this answer": tag the resulting assistant
+            # message with which existing message it visualizes, so the
+            # frontend can render it nested under that source message
+            # instead of as its own top-level bubble. Deliberately carried
+            # via metadata, not parent_message_id — this turn still chains
+            # normally onto the branch tip below; see the frontend's
+            # inlineVisualizeSourceId doc comment for why the two must stay
+            # separate.
+            inline_visualize_source_id = payload.get("inline_visualize_source_id")
+            assistant_metadata = (
+                {"inline_visualize_source_id": inline_visualize_source_id}
+                if inline_visualize_source_id is not None
+                else None
+            )
+
             # Assistant continues the same branch as the user message it
             # answers. If we just persisted a new user row we chain off
             # that; if we did not (regenerate path) and the caller pinned a
@@ -1707,6 +1729,7 @@ class TurnRuntimeManager:
                     capability=capability_name,
                     events=assistant_events,
                     attachments=generated_attachments or None,
+                    metadata=assistant_metadata,
                     parent_message_id=new_user_message_id,
                 )
             elif branch_parent_explicit:
@@ -1717,6 +1740,7 @@ class TurnRuntimeManager:
                     capability=capability_name,
                     events=assistant_events,
                     attachments=generated_attachments or None,
+                    metadata=assistant_metadata,
                     parent_message_id=branch_parent_id,
                 )
             else:
@@ -1727,6 +1751,7 @@ class TurnRuntimeManager:
                     capability=capability_name,
                     events=assistant_events,
                     attachments=generated_attachments or None,
+                    metadata=assistant_metadata,
                 )
             await self._flush_buffered_events(execution)
             await self.store.update_turn_status(turn_id, "completed")

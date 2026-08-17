@@ -57,7 +57,7 @@ _PAGES = (
 )
 _CAPABILITIES = ("chat", "quiz", "research", "solve", "visualize", "mastery_path")
 _THEMES = ("light", "dark", "glass", "snow", "brand")
-_RENDER_MODES = ("auto", "svg", "chartjs", "mermaid", "html", "manim_video")
+_RENDER_MODES = ("auto", "svg", "chartjs", "mermaid", "react", "manim_video")
 _QUIZ_MODES = ("custom", "mimic")
 _QUIZ_QUESTION_TYPES = (
     "choice",

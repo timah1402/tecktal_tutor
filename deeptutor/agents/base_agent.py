@@ -152,7 +152,8 @@ class BaseAgent(ABC):
         """
         Get model name.
 
-        Priority: agent_config > llm_config > self.model > environment variable
+        Priority: agent_config > capability model pin (agents.yaml) > llm_config
+        > self.model > environment variable
 
         Returns:
             Model name
@@ -164,11 +165,16 @@ class BaseAgent(ABC):
         if self.agent_config.get("model"):
             return self.agent_config["model"]
 
-        # 2. Try general LLM config
+        # 2. Try the capability-level model pin from agents.yaml (e.g. pinning
+        # visualize to a stronger model regardless of the globally active one).
+        if self._agent_params.get("model"):
+            return self._agent_params["model"]
+
+        # 3. Try general LLM config
         if self.llm_config.get("model"):
             return self.llm_config["model"]
 
-        # 3. Use instance model
+        # 4. Use instance model
         if self.model:
             return self.model
 

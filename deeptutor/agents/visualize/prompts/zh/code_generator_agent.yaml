@@ -4,7 +4,9 @@ system_base: |
 
   输出契约：
   - 只输出代码，用一个带正确语言标签的代码块包裹（```svg、```javascript、
-    ```mermaid 或 ```html）。不要解释、不要前言、不要第二个代码块。
+    ```mermaid 或 ```html——react 的输出也是单个 ```html 标签的代码块，
+    因为它同样交付为一个自己引导 React 的自包含 HTML 文档）。不要解释、
+    不要前言、不要第二个代码块。
   - 代码必须完整且自包含——它会被直接渲染，前后不会再拼接任何内容。
 
 rules_general: |
@@ -21,6 +23,19 @@ rules_general: |
   文本：
   - 全部用句首大写（标签、标题、说明）。不要每词首字母大写，不要全大写。
   - 每个标签都要可读：对比度足够，字号不小于 11px。
+
+  内容正确性（适用于所有渲染类型，不只是排版）：
+  - 你画出的任何数字、公式或带标签的量，在定稿前都必须独立重新计算并
+    与它所依附的对象核对一致——不要仅凭"放在这个位置感觉差不多对"就
+    写上一个数值。一个看似合理但实际错误的数字（例如与相邻标签互换）
+    比图形简单更糟糕，因为它会不知不觉教给用户错误的事实。
+  - 具体来说：如果你画出一个公式（例如 a² + b² = c²）并配上具体的数值
+    实例，每个实例都必须精确满足该公式——用你选定的具体数字重新计算
+    每一边并核实等式成立，而不只是核对符号形式本身。
+  - 当多个带标签的元素分别来自不同的输入时（例如三角形每条边各对应
+    一个正方形，每个数据点各对应一根柱子），在组合时明确地把每个标签
+    映射到它的具体来源——不要凭"这个位置大概对应那个元素"的印象放置
+    标签，这正是标签错位的根源。
 
 rules_svg: |
   渲染类型：SVG。图会内联到页面中（不再是 <img>），因此继承 app 的主题和字体，
@@ -68,6 +83,11 @@ rules_svg: |
   绝不做一次性的过渡动画。
 
   坐标计算——SVG 大多数失败源于算术，所以先算后画：
+  - 每一个数值型 SVG 属性（width、height、x、y、cx、cy、r、points、d 等）
+    必须是一个计算完毕的最终数字，例如 `width="81"`——绝不能是未求值的
+    表达式，例如 `width="9*9"` 或 `width="9 * 9"`。SVG 属性不是脚本执行
+    环境，渲染器不会替你计算；表达式留在属性里会让该元素不可见或尺寸
+    错误。先自己完成算术，再只写出计算结果的数字。
   - 框宽由最长标签决定：`width = max(标题字数*8, 副标题字数*7) + 24`。
     100px 的框约容纳 10 个副标题字符。特殊字符（公式、∑、₆、下标）更宽，加 30-50%。
   - 行内排布：放一行 N 个框前，先核算总宽是否落在安全区（x=40..640）。例如四个
@@ -86,6 +106,18 @@ rules_svg: |
   3. 无关的框、标签、箭头之间没有意外重叠。
   4. `text-anchor="end"` 会从 x 向左延伸——x 较小时可能越过 x=0；优先用
      `text-anchor="start"` 并把整列右对齐。
+
+  几何正确性检查清单（任何把数字标签附加到具体图形上的图——勾股定理式
+  的面积图、带标签的数据点、标注尺寸的图形等）——定稿前逐条核对：
+  1. 对每个带标签的子元素，重新说明它的数字是从哪里推导出来的（例如
+     "这个正方形位于长度为 4 的直角边上，所以它的面积标签必须是
+     4²=16"），并确认你实际写下的标签与之相符。
+  2. 如果图中在展示某种关系（a² + b² = c²、某个求和、某个比例），把你
+     选定的具体数字代入并核实它依然成立——不要只是沿用某组教科书三元
+     组的"外形"，却在哪个数字对应哪个标签上出现偏移。
+  3. 更大的正方形/柱子/线段必须对应更大的数字，反之亦然——如果视觉大小
+     与自己的标签矛盾（例如较小的正方形却标了较大的数字），这是标签
+     错位的明显信号，把它当作硬性检查项，而不是风格选择。
 
   按 `visual_genre` 指示的教学意图匹配画法：
   - flowchart：顺序步骤 / 决策分支。框 + 箭头，单一方向（全部自上而下或全部从左
@@ -156,6 +188,62 @@ rules_html: |
     `setInterval`。
   - 在以上约束内自由决定布局、配色和交互，让页面清晰、美观、易学。
 
+rules_react: |
+  渲染类型：React。输出一个完整、自包含的单文件 HTML 页面（与 HTML 相同——
+  包在一个 ```html 代码块里），页面主体引导并渲染一个真正的 React 组件。
+  这是首选的交互格式——请写地道的 React（hooks、state、组合式组件），
+  而不是手写的命令式 DOM 操作。
+  - 从 `<!DOCTYPE html>` 写到 `</html>`。`<script type="text/babel">` 如果
+    没有加载 Babel Standalone 就是完全无效的——浏览器会静默跳过它不认识
+    的 script 类型，也就是说漏掉 Babel 这一个脚本会导致你的整个组件永远
+    不执行，页面渲染出来就是一片空白。为了绝对避免这种情况，请在你自己
+    的 `<script type="text/babel">` 代码块之前，原样复制以下这三行脚本
+    头，顺序不变——不要改写、不要调换顺序、不要漏掉任何一行（这三个
+    CDN 地址都在白名单内：cdn.jsdelivr.net、cdnjs.cloudflare.com、
+    unpkg.com——其它一律被拦截，与 HTML 相同）：
+    ```html
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    ```
+    把组件写在 `<script type="text/babel">` 里——Babel Standalone 会在
+    浏览器加载时转译 JSX，不存在构建步骤；这个标签里只写普通 JSX，绝不
+    手写 `React.createElement`。
+  - 用 `ReactDOM.createRoot(document.getElementById("root")).render(<App />)`
+    挂载（React 18 API——不要用旧版的 `ReactDOM.render`），`#root` 是你在
+    body 里声明的一个 `<div>`。
+  - 用组合式函数组件配合 `useState`/`useEffect` 等来组织代码，就像真实的
+    React 代码库那样——不要写成一个塞满内联操作的巨型组件。这正是选择
+    react 而非 html 的意义所在：更干净的状态管理能做出更正确、更精致的
+    交互界面。
+  - 页面在沙箱 iframe（null origin）中渲染，与 HTML 完全相同。KaTeX 由宿主
+    自动注入（`$...$` / `$$...$$`）。数据密集型内容推荐：Chart.js（同样从
+    CDN 白名单用 `<script>` 加载，用 `ref` + `useEffect` 把它的 canvas 包成
+    一个小的 React 组件），或者直接从 JSX 返回纯 SVG。
+  - 地理地图：拉取真实拓扑数据，绝不手编坐标。美国各州：
+    `cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json`（d3.geoAlbersUsa）。
+    世界：`cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json`
+    （d3.geoNaturalEarth1）。用文件里真实的 feature 名 / id 来对应数据。
+  - 宿主会按内容高度自动调整 iframe 高度——不要设固定的 body 高度；用
+    `max-width: 100%` 和 `box-sizing: border-box`。
+  - 追问：调用 `sendPrompt("一个简短的问题")`（例如从按钮的 onClick）把这个
+    问题投到对话输入框。用在学习者自然会想深入的地方。
+  - 对循环或分阶段流程，构建一个 stepper 组件：用 state 保存每个阶段
+    （`const [step, setStep] = useState(0)`），用圆点 / 药丸显示位置，
+    Next 处理函数从最后一个阶段绕回第一个。
+  - 如果简报里的 `chart_type` / 交互标签是 "animation"，或请求 / 描述里出现
+    "动起来"、"旋转"、"脈動"、"流动"、"公转"、"漂浮"、"闪烁"之类的词：这个
+    页面的全部任务就是真正动起来，不是静止不动。让它一挂载就自动播放——
+    除非用户也要求了播放/暂停控件，否则不要把动画锁在按钮后面。优先用
+    通过 `className` 切换的 CSS `@keyframes` class（比 JS 驱动的运动更流畅、
+    更省资源）实现连续 / 循环运动。只对 `transform` 和 `opacity` 做动画
+    （旋转/平移/缩放/淡入淡出）——它们不影响布局，能让页面测得的高度在
+    运动时保持稳定。绝不要直接对 `width`/`height`/`top`/`left`/`margin`
+    做动画。如果运动由数据或用户输入驱动而非固定循环，就在 `useEffect`
+    里用 `requestAnimationFrame` 循环驱动 state 更新（并在卸载时清理），
+    而不是 `setInterval`。
+  - 在以上约束内自由决定组件结构、配色和交互，让页面清晰、美观、易学。
+
 user_template: |
   用户请求：
   {user_input}
@@ -173,3 +261,4 @@ user_template: |
   - Chart.js 用：```javascript ... ```
   - Mermaid 用：```mermaid ... ```
   - HTML 用：```html ... ```
+  - React 用：```html ... ```（一个自己引导 React 的自包含文档）

@@ -47,6 +47,7 @@ _AGENTS_YAML_CAPABILITY_SECTIONS: dict[str, tuple[str, ...]] = {
     "co_writer": ("capabilities", "co_writer"),
     "vision_solver": ("plugins", "vision_solver"),
     "math_animator": ("plugins", "math_animator"),
+    "visualize": ("capabilities", "visualize"),
 }
 
 _SIMPLE_LLM_DEFAULTS: dict[str, dict[str, Any]] = {
@@ -56,7 +57,16 @@ _SIMPLE_LLM_DEFAULTS: dict[str, dict[str, Any]] = {
     "co_writer": {"temperature": 0.6, "max_tokens": 4096},
     "vision_solver": {"temperature": 0.3, "max_tokens": 12000},
     "math_animator": {"temperature": 0.2, "max_tokens": 16834},
+    # "model" (unlike the others) is an opt-in pin, not a default: an empty
+    # string here means "use whichever model is globally active", so it's
+    # left out of the defaults dict and just always defaults to "".
+    "visualize": {"temperature": 0.4, "max_tokens": 16384, "model": ""},
 }
+
+# Capabilities whose block additionally exposes a free-text model-pin field
+# (raw provider model string, e.g. "gpt-5") — see _build_simple_llm_block /
+# _apply_simple_llm_into_agents_yaml. Empty clears the pin.
+_MODEL_PIN_CAPABILITIES: frozenset[str] = frozenset({"visualize"})
 
 # main.yaml subtrees that capabilities read at runtime (besides LLM params).
 _MAIN_YAML_RUNTIME_DEFAULTS: dict[str, dict[str, Any]] = {
@@ -217,10 +227,13 @@ def _build_chat_block(agents_cfg: dict[str, Any]) -> dict[str, Any]:
 def _build_simple_llm_block(agents_cfg: dict[str, Any], capability: str) -> dict[str, Any]:
     defaults = _SIMPLE_LLM_DEFAULTS[capability]
     section = _get_at(agents_cfg, _AGENTS_YAML_CAPABILITY_SECTIONS[capability])
-    return {
+    block = {
         "temperature": _coerce_float(section.get("temperature"), defaults["temperature"]),
         "max_tokens": _coerce_int(section.get("max_tokens"), defaults["max_tokens"]),
     }
+    if capability in _MODEL_PIN_CAPABILITIES:
+        block["model"] = str(section.get("model") or "")
+    return block
 
 
 def _build_main_runtime_block(main_cfg: dict[str, Any], capability: str) -> dict[str, Any]:
@@ -352,6 +365,12 @@ def _apply_simple_llm_into_agents_yaml(
         )
     if "max_tokens" in block:
         new_section["max_tokens"] = _coerce_int(block.get("max_tokens"), defaults["max_tokens"])
+    if capability in _MODEL_PIN_CAPABILITIES and "model" in block:
+        model_value = str(block.get("model") or "").strip()
+        if model_value:
+            new_section["model"] = model_value
+        else:
+            new_section.pop("model", None)
     _set_at(agents_cfg, section_path, new_section)
 
 

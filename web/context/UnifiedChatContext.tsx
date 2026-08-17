@@ -79,6 +79,17 @@ export interface SendMessageOptions {
    *  sibling under this parent rather than appended to the session tail.
    *  ``null`` means "explicitly attach to the session root". */
   parentMessageId?: number | null;
+  /** Inline "Visualize this answer": id of the existing message this turn
+   *  visualizes. Purely a UI nesting hint (see MessageItem.inlineVisualizeSourceId)
+   *  — deliberately NOT the same thing as parentMessageId above, which would
+   *  splice this turn into the edit-branch tree at the source message and
+   *  risk hiding the real next turn there. This turn still chains onto the
+   *  current tip like any normal send. */
+  inlineVisualizeSourceId?: number;
+  /** Inline "Visualize this answer": don't let this one-off capability run
+   *  overwrite the session's persisted default capability (agents.yaml
+   *  preference), the way every normal send does. */
+  ephemeralCapability?: boolean;
 }
 
 export interface ChatState {
@@ -153,6 +164,11 @@ export interface MessageItem {
   requestSnapshot?: MessageRequestSnapshot;
   /** Edit-branching: id of the message this row continues. */
   parentMessageId?: number | null;
+  /** Inline "Visualize this answer": when set, this message is a nested
+   *  visualize result generated from the message with this id — rendered
+   *  under that source message instead of as its own top-level bubble. Not
+   *  related to parentMessageId (the edit-branch chain parent). */
+  inlineVisualizeSourceId?: number;
 }
 
 interface SessionEntry extends ChatState {
@@ -190,7 +206,12 @@ type Action =
     }
   | { type: "POP_LAST_ASSISTANT"; key: string }
   | { type: "RESTORE_ASSISTANT"; key: string; message: MessageItem }
-  | { type: "STREAM_START"; key: string }
+  | {
+      type: "STREAM_START";
+      key: string;
+      capability?: string | null;
+      inlineVisualizeSourceId?: number;
+    }
   | { type: "STREAM_EVENT"; key: string; event: StreamEvent }
   | {
       type: "STREAM_END";
@@ -428,8 +449,15 @@ function reducer(state: ProviderState, action: Action): ProviderState {
                 role: "assistant",
                 content: "",
                 events: [],
-                capability: session.activeCapability || "",
+                // The capability this specific send actually used, when the
+                // caller passed one (e.g. an inline visualize override) —
+                // falls back to the session's ambient mode for a normal
+                // send, where the two always agree anyway.
+                capability: action.capability || session.activeCapability || "",
                 parentMessageId: tip?.id ?? null,
+                ...(action.inlineVisualizeSourceId !== undefined
+                  ? { inlineVisualizeSourceId: action.inlineVisualizeSourceId }
+                  : {}),
               },
             ],
             updatedAt: Date.now(),
@@ -977,6 +1005,11 @@ export function UnifiedChatProvider({
             raw,
             attachments,
           );
+          const inlineVisualizeSourceId = (
+            message.metadata as
+              | { inline_visualize_source_id?: unknown }
+              | undefined
+          )?.inline_visualize_source_id;
           return {
             id: message.id,
             role: message.role,
@@ -992,6 +1025,9 @@ export function UnifiedChatProvider({
                 ? null
                 : message.parent_message_id,
             ...(requestSnapshot ? { requestSnapshot } : {}),
+            ...(typeof inlineVisualizeSourceId === "number"
+              ? { inlineVisualizeSourceId }
+              : {}),
           };
         });
     },
@@ -1488,7 +1524,14 @@ export function UnifiedChatProvider({
           parentMessageId: localParentId,
         });
       }
-      dispatch({ type: "STREAM_START", key });
+      dispatch({
+        type: "STREAM_START",
+        key,
+        capability: effectiveCapability,
+        ...(options?.inlineVisualizeSourceId !== undefined
+          ? { inlineVisualizeSourceId: options.inlineVisualizeSourceId }
+          : {}),
+      });
       const effectiveTurnConfig =
         options?.persistUserMessage === false
           ? { ...(effectiveConfig || {}), _persist_user_message: false }
@@ -1502,6 +1545,10 @@ export function UnifiedChatProvider({
         session_id: session.sessionId,
         attachments: effectiveAttachments,
         language: effectiveLanguage,
+        ...(options?.ephemeralCapability ? { ephemeral_capability: true } : {}),
+        ...(options?.inlineVisualizeSourceId !== undefined
+          ? { inline_visualize_source_id: options.inlineVisualizeSourceId }
+          : {}),
         ...(effectiveNotebookReferences?.length
           ? { notebook_references: effectiveNotebookReferences }
           : {}),

@@ -55,12 +55,19 @@ export default memo(function VisualizeConfigPanel({
           className={`${INPUT_CLS} w-full`}
         >
           <option value="auto">{t("Auto")}</option>
+          <option value="react">{t("React")}</option>
           <option value="chartjs">{t("Chart.js")}</option>
           <option value="svg">{t("SVG")}</option>
           <option value="mermaid">{t("Mermaid")}</option>
-          <option value="html">{t("HTML")}</option>
           <option value="manim_video">{t("Animation")}</option>
-          {/* Storyboard (manim_image) disabled — not selectable from the UI. */}
+          {/* HTML no longer offered — react is the interactive/animated
+              format now, and it's a strict upgrade (same iframe/sandbox
+              contract, real component structure instead of freehand DOM).
+              The render_type itself still exists server-side (rules_html,
+              validate_visualization, VisualizationViewer's html case) for
+              already-persisted historical results, just not reachable from
+              this picker anymore. Storyboard (manim_image) stays disabled —
+              not selectable from the UI. */}
         </select>
       </Field>
 

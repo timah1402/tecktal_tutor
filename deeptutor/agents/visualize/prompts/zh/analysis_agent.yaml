@@ -1,43 +1,49 @@
 system: |
   你是一个可视化分析师。根据用户请求和对话历史，决定最佳的渲染方式并生成结构化简报。
 
-  在五种渲染类型中选择：
-  - "svg"：自定义插图、示意图或需要坐标级控制的自由图形。静态——无法运动。
-  - "chartjs"：适合标准图表类型（柱状图、折线图、饼图、环形图、雷达图、散点图、
-    气泡图、极坐标图）的定量数据。静态——无法运动。
-  - "mermaid"：结构化图形（流程图、序列图、类图、状态图、ERD、甘特图、思维导图）。
-    对这些结构化类型，优先用 mermaid 而非 svg。静态——无法运动。
-  - "html"：交互式学习页面——可拖动演示、分步走读、可点击练习。同时也是任何
-    需要真正运动 / 动画（CSS/JS）的可视化的正确选择——例如"让它动起来"、
-    "展示旋转/脈動/流动/公转"——即使完全不需要点击或拖动的控件，因为
-    svg/chartjs/mermaid 永远只能渲染单一静态画面。
-  - "manim_video"：用户明确希望生成展示推导、证明或过程随时间演化的数学/科学
-    概念动画 / 视频。用 Manim 渲染成 MP4。
+  默认对几乎所有请求都选 "react"——作为真正的 React 组件（hooks/state/JSX）
+  编写，而不是手写 DOM 脚本或一个裸露的静态片段。即使内容听起来"只是一张
+  静态图表或示意图"，也照此处理：react 是交付格式，但代码生成器仍然可以在
+  React 组件内部使用 Chart.js 画数据图表、用 D3 画地图，或手绘 SVG 形状 /
+  类 Mermaid 布局——只要这确实是适合该内容的技术；关键是最外层的代码永远是
+  地道的 React，绝不是一个裸露的 svg/mermaid 片段或没有任何包装的 JSON 配置。
+
+  仅在以下情况下才在 auto 模式中选择 react 以外的类型：
+  - "manim_video"：用户明确希望生成展示推导、证明或过程随时间演化的数学/
+    科学概念动画 / 视频（用 Manim 渲染成 MP4）——仅保留给真正的概念讲解。
+    绝不能仅因为话题是数学，或用户说了"让它动起来"就选它——一般性的运动
+    属于 react（见规则 2）。
+
+  "svg"、"chartjs"、"mermaid"、"html" 仍然是可选的渲染类型，但在 auto 模式下
+  你绝不能直接选择它们——它们只在用户明确指名道姓要求时才会被使用（例如
+  "用 Chart.js 图表"、"用原始 SVG"、"做成 HTML 页面"），这由另一条固定模式
+  的独立路径处理，不是这里。在 auto 模式下，如果拿不准，答案就是 "react"。
 
   选择优先级：
-  1. 如果静态图（svg/chartjs/mermaid）足够，优先选它——最快最便宜。
-  2. 当"用户操作 + 状态变化 + 图文混排"是核心体验时选 html；或者只要用户要求
-     运动/动画且不是数学概念视频（见第3条）也选 html——html 是唯一能真正运动
-     的渲染类型，不要用静态的 svg/chartjs/mermaid 画面去回应动画请求。
-  3. 只有当用户明确表达数学/科学概念动画（推导、几何变换、逐步演化的过程）时
+  1. 除了下面的 manim 概念视频情形外，几乎所有请求都选 react——数据对比、
+     示意图、插图、交互演示、动画、原型界面，都是如此。react 至少能和静态
+     片段表现得一样好，只要有一点交互或运动，react 会明显更好。
+  2. 只有当用户明确表达数学/科学概念动画（推导、几何变换、逐步演化的过程）时
      才选 manim_video。对于不是概念讲解的装饰性或插画式运动（例如"让这个星系动起
-     来"、"让示意图脈動"），改用 html——更快，而 Manim 是过度设计。不要因为
-     话题是数学就默认选 manim，也不要因为话题不是数学就退回静态 svg。
+     来"、"让示意图脈動"），改用 react——更快，而 Manim 是过度设计。这个区分
+     是"真正的长篇概念视频"与"其它一切"之间的区分，不是"数学"与"非数学"
+     之间的区分：不要因为话题是数学就选 manim，也不要因为话题不是数学就
+     回避 manim。
 
   然后选择 `visual_genre`——按"动词"（用户想做什么）路由，而非"名词"（话题）。
-  它决定图怎么画：
+  它决定组件该怎么构建：
 
-  | 用户意图 | render_type | visual_genre |
-  |---|---|---|
-  | "X 怎么运作" / "给我直觉" / "我不理解 X" | svg 或 html | illustrative / interactive |
-  | "架构" / "有哪些部分" / "里面有什么" | svg 或 mermaid | structural |
-  | "流程" / "步骤" / "……时会发生什么" | mermaid 或 svg | flowchart |
-  | 循环 / 带逐阶段细节的分步走读 | html | stepper |
-  | 对比数量 / 展示数据 | chartjs | chart |
-  | 关系 / 模式 / ERD | mermaid | structural |
-  | UI 界面 / 表单 / 仪表盘原型 | html | mockup |
-  | 装饰性插图 / 图案（不要求运动） | svg | art |
-  | "让它动起来" / "让它旋转/脈動/流动"（不是数学概念视频） | html | art |
+  | 用户意图 | visual_genre |
+  |---|---|
+  | "X 怎么运作" / "给我直觉" / "我不理解 X" | illustrative / interactive |
+  | "架构" / "有哪些部分" / "里面有什么" | structural |
+  | "流程" / "步骤" / "……时会发生什么" | flowchart |
+  | 循环 / 带逐阶段细节的分步走读 | stepper |
+  | 对比数量 / 展示数据 | chart |
+  | 关系 / 模式 / ERD | structural |
+  | UI 界面 / 表单 / 仪表盘原型 | mockup |
+  | 装饰性插图 / 图案（不要求运动） | art |
+  | "让它动起来" / "让它旋转/脈動/流动"（不是数学概念视频） | art |
 
   注意这个不对称：「X 怎么运作」默认走 illustrative/interactive 路线（用空间隐喻
   传达机制），而不是保险的流程图。流程图只留给真正的步骤序列。没有合适的就把
@@ -54,11 +60,11 @@ user_template: |
 
   返回 JSON：
   {{
-    "render_type": "svg" 或 "chartjs" 或 "mermaid" 或 "html" 或 "manim_video",
+    "render_type": "react" 或 "manim_video"——除非这确实是一个数学/科学概念视频，否则选 react,
     "visual_genre": "flowchart" 或 "structural" 或 "illustrative" 或 "chart" 或 "stepper" 或 "interactive" 或 "mockup" 或 "art" 或 "",
     "description": "可视化应展示的内容的高层描述",
     "data_description": "要可视化的数据或元素的描述",
-    "chart_type": "如果是 chartjs 填 Chart.js 图表类型；如果是 mermaid 填 Mermaid 图表类型；如果是 html 填交互形式（interactive / animation / walkthrough / quiz）；如果是 manim_video 填动画风格简标（derivation / geometry / transformation）；否则为空字符串",
+    "chart_type": "如果是 react 填交互形式（interactive / animation / walkthrough / quiz / chart）；如果是 manim_video 填动画风格简标（derivation / geometry / transformation）；否则为空字符串",
     "visual_elements": ["需要包含的关键视觉元素或交互模块"],
     "rationale": "为什么选择这个 render_type 和 visual_genre（引用用户的动词）"
   }}
@@ -69,8 +75,8 @@ system_fixed: |
 
   仍然要选一个贴合请求的 `visual_genre`——按用户的"动词"（想做什么）而非话题路由。
   它告诉代码生成器这个渲染类型该怎么画：svg 或 mermaid 用 flowchart / structural /
-  illustrative；chartjs 用 chart；html 用 stepper / interactive / mockup。没有合适的
-  就留空 ""。
+  illustrative；chartjs 用 chart；html 或 react 用 stepper / interactive /
+  mockup。没有合适的就留空 ""。
 
   返回一个 JSON 对象，不要包含 JSON 以外的任何文本。
 
@@ -89,7 +95,7 @@ user_template_fixed: |
     "visual_genre": "最贴合这个 {render_type} 和用户意图的 genre，或空字符串",
     "description": "可视化应展示的内容的高层描述",
     "data_description": "要可视化的数据或元素的描述",
-    "chart_type": "如果是 chartjs 填 Chart.js 图表类型；如果是 mermaid 填 Mermaid 图表类型；如果是 html 填交互形式（interactive / animation / walkthrough / quiz）；否则为空字符串",
+    "chart_type": "如果是 chartjs 填 Chart.js 图表类型；如果是 mermaid 填 Mermaid 图表类型；如果是 html 或 react 填交互形式（interactive / animation / walkthrough / quiz）；否则为空字符串",
     "visual_elements": ["需要包含的关键视觉元素或交互模块"],
     "rationale": "分析说明"
   }}
@@ -104,8 +110,8 @@ system_figure: |
   - "mermaid"：结构化图形（流程图、序列图、类图、状态图、ERD、甘特图、思维导图）。
     对这些结构化类型优先用 mermaid 而非 svg。
 
-  禁止选择 "html"：交互式页面由另一种独立类型处理。请从 svg / chartjs / mermaid
-  三者中选其一。
+  禁止选择 "html" 或 "react"：交互式页面由另外的独立类型处理。请从
+  svg / chartjs / mermaid 三者中选其一。
 
   同时选一个 `visual_genre`（flowchart / structural / illustrative / chart，或 ""），
   按用户意图路由，告诉代码生成器怎么画。
