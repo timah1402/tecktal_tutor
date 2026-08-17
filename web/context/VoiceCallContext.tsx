@@ -145,6 +145,26 @@ const GENERATION_ONLY_CAPABILITIES: ReadonlySet<string> = new Set([
   "deep_research",
 ]);
 
+// Deterministic safety net: the model is *supposed* to call
+// switch_capability(visualize, ...) for any "visualize"/"visualization"
+// utterance (see voice.py's VISUALIZING instructions), but tool-calling is
+// a judgment call it doesn't make 100% reliably — and when it doesn't, the
+// utterance falls through to handleTurnComplete's default forward, landing
+// in whatever capability happens to be active (chat, solve, ...) as a
+// plain message. Those capabilities have no real way to produce a chart,
+// so this reliably produced an unwanted text/exec-fallback answer no
+// matter how the *receiving* capability's own prompt was tightened —
+// tightening the receiving end can't fix a request that should never have
+// arrived there. Catching the trigger word here, client-side, doesn't
+// depend on the model's tool-calling judgment at all: same word list as
+// the voice prompt's own VISUALIZING trigger (kept to "visuali[sz]e" +
+// "-ation" deliberately, not the looser "chart"/"diagram"/"draw" synonyms
+// also listed there, since those are common enough in ordinary
+// conversation — "let me chart a course", "draw your attention to" — that
+// a client-side keyword match on them would misfire; "visualize" itself is
+// close to unambiguous).
+const VISUALIZE_TRIGGER_RE = /\bvisuali[sz]e|\bvisuali[sz]ation/i;
+
 function isFillerUtterance(text: string): boolean {
   return FILLER_UTTERANCE_RE.test(text.trim());
 }
@@ -262,6 +282,24 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  // Force the composer into visualize mode and send `request` through it —
+  // the same navigate/dispatch-then-send shape switch_capability's own
+  // visualize branch uses below, extracted so handleTurnComplete's
+  // deterministic safety net (VISUALIZE_TRIGGER_RE) can trigger the exact
+  // same real pipeline without waiting on/depending on the model actually
+  // calling switch_capability itself.
+  const forceVisualize = useCallback(
+    (request: string, renderMode: string = "auto") => {
+      if (pathname.startsWith("/home")) {
+        flushSync(() => dispatchCapabilitySelect("visualize"));
+      } else {
+        router.push("/home?capability=visualize");
+      }
+      sendViaBridge(request, { render_mode: renderMode, quality: "medium", style_hint: "" });
+    },
+    [pathname, router, sendViaBridge],
+  );
+
   // Pair a finished user utterance with the assistant's reply, accumulated
   // across the turn's events. Both refs (not state) — plumbing between
   // event callbacks, never triggers a re-render.
@@ -325,6 +363,22 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     }
     pendingExchangeForFunctionRef.current = null;
     if (!userText || isFillerUtterance(userText)) return;
+
+    // Deterministic safety net (see VISUALIZE_TRIGGER_RE's doc comment):
+    // the model should have called switch_capability(visualize, ...) for
+    // this and never reached here at all. When it doesn't, do not let the
+    // generic default-forward below hand "visualize X" to whatever
+    // capability happens to be active (chat, solve, ...) as a plain
+    // message — none of those can actually produce a chart, so that
+    // silently produces an unhelpful text/exec-fallback answer no matter
+    // how tightly *their* prompts are written. Takes priority over
+    // GENERATION_ONLY_CAPABILITIES below and runs regardless of which
+    // capability is currently active.
+    if (VISUALIZE_TRIGGER_RE.test(userText)) {
+      forceVisualize(userText);
+      return;
+    }
+
     if (GENERATION_ONLY_CAPABILITIES.has(chat?.state.activeCapability ?? "")) {
       return;
     }
@@ -365,7 +419,7 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     } else {
       chat?.sendMessage(userText);
     }
-  }, [chat]);
+  }, [chat, forceVisualize]);
 
   // The voice-navigable actions declared server-side (voice.py). AppSidebar
   // (and the call inside it) persists across every page, so navigate_to can

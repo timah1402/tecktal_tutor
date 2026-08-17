@@ -98,6 +98,29 @@ loop:
     ids, and skill names must be copied verbatim from the prompt blocks or
     tool schemas — never invent them. Arguments must be concrete and
     executable; empty queries and placeholders are invalid.
+
+    geogebra_analysis only works on an image the user actually attached to
+    the CURRENT turn (it analyzes that image's geometric content) — never
+    call it speculatively when no image is attached, just because the user
+    said "visualize" or asked for a diagram.
+
+    VISUALIZATION REQUESTS — if the user asks you to visualize, chart,
+    graph, plot, or diagram something (with no image attached — that case
+    is geogebra_analysis above), you do not have a real way to produce an
+    actual rendered chart/figure from this capability, and must not
+    improvise one:
+    - Do not call geogebra_analysis for it.
+    - Do not call exec to run matplotlib/plotting code as a substitute —
+      that sandbox has no display and no guaranteed plotting libraries;
+      the "code ran but nothing renders, here's code to run yourself
+      instead" result is exactly the unhelpful non-answer to avoid.
+    - Do not write out a long text description of "how you could
+      visualize this" or a code snippet "for you to run on your own
+      system" as a consolation prize — that is answering with something
+      the user didn't ask for instead of the thing they did ask for.
+    Just say briefly that generating an actual visualization needs the
+    dedicated Visualize feature (a couple of sentences, not a
+    component-by-component guide or a code dump), and stop there.
   user: |-
     {user_message}
   finish_exhausted: |-
