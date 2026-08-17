@@ -331,6 +331,7 @@ const AssistantMessage = memo(function AssistantMessage({
         },
   ) => void;
 }) {
+  const { t } = useTranslation();
   const events = useMemo(() => msg.events ?? [], [msg.events]);
   const resultEvent = useMemo(
     () => msg.events?.find((event) => event.type === "result") ?? null,
@@ -379,19 +380,14 @@ const AssistantMessage = memo(function AssistantMessage({
   // code_generation stages) is deliberately hidden — see the
   // GENERATIVE_CAPABILITIES comment on AssistantActivity below — so without
   // this the user stares at a blank bubble for however long code generation
-  // takes. Surface just the latest status line instead of the full trace.
-  const visualizeStatusText = useMemo(() => {
-    if (msg.capability !== "visualize" || !isStreaming) return null;
-    if (visualizeResult || mathAnimatorResult) return null;
-    const events = msg.events ?? [];
-    for (let i = events.length - 1; i >= 0; i -= 1) {
-      const ev = events[i];
-      if ((ev.type === "thinking" || ev.type === "progress") && ev.content?.trim()) {
-        return ev.content.trim();
-      }
-    }
-    return null;
-  }, [msg.capability, msg.events, isStreaming, visualizeResult, mathAnimatorResult]);
+  // takes. A plain "Generating..." label, not the stage events' own text —
+  // those sometimes carry raw code/technical fragments (e.g. a streamed
+  // draft), which reads as broken when surfaced as a one-line status.
+  const isGeneratingVisualization =
+    msg.capability === "visualize" &&
+    isStreaming &&
+    !visualizeResult &&
+    !mathAnimatorResult;
 
   const inlineVisualizeResults = useMemo(() => {
     if (!inlineVisualizations?.length) return [];
@@ -501,10 +497,10 @@ const AssistantMessage = memo(function AssistantMessage({
             />
           ) : null}
         </>
-      ) : visualizeStatusText ? (
+      ) : isGeneratingVisualization ? (
         <div className="flex items-center gap-2 text-[13px] text-[var(--muted-foreground)]">
           <Loader2 size={14} strokeWidth={2} className="animate-spin" />
-          <span>{visualizeStatusText}</span>
+          <span>{t("Generating...")}</span>
         </div>
       ) : mathAnimatorResult ? (
         <MathAnimatorViewer result={mathAnimatorResult} />
