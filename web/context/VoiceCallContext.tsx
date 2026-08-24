@@ -38,6 +38,7 @@ import {
   dispatchVisualizeAction,
   dispatchMasteryPathRefresh,
   dispatchInlineQuestionAction,
+  dispatchUiContextRequest,
   UI_CONTEXT_EVENT,
 } from "@/context/app-shell-storage";
 import { useUnifiedChatSafe } from "@/context/UnifiedChatContext";
@@ -1233,6 +1234,24 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener(UI_CONTEXT_EVENT, onUiContext);
     return () => window.removeEventListener(UI_CONTEXT_EVENT, onUiContext);
   }, [call]);
+
+  // The moment a call freshly connects, ask whatever's currently mounted
+  // (a quiz/outline/visualization, possibly generated during an earlier
+  // call — including one the user just hung up and reconnected) to
+  // re-announce itself via UI_CONTEXT_EVENT above; see
+  // dispatchUiContextRequest's doc comment for why this is needed at all.
+  // Gated on the "connecting" -> "listening" transition specifically
+  // (call.state cycles through "listening" after every turn during normal
+  // conversation, not just at connect) so this fires once per call, not
+  // once per turn.
+  const prevCallStateRef = useRef<RealtimeCallState>(call.state);
+  useEffect(() => {
+    const prevState = prevCallStateRef.current;
+    prevCallStateRef.current = call.state;
+    if (prevState === "connecting" && call.state === "listening") {
+      dispatchUiContextRequest();
+    }
+  }, [call.state]);
 
   return (
     <VoiceCallCtx.Provider

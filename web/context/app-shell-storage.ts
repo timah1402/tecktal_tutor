@@ -239,6 +239,25 @@ export function dispatchUiContext(summary: string): void {
   );
 }
 
+// Fired BY VoiceCallContext the moment a realtime voice call freshly
+// connects, so QuizViewer/ResearchOutlineEditor/VisualizationViewer can
+// re-announce whatever they're currently showing via UI_CONTEXT_EVENT above.
+// Needed because each of those components only calls dispatchUiContext once,
+// tied to when it mounts or its own result/state changes — never to the
+// voice call's lifecycle. Without this, a quiz/outline/visualization
+// generated during an earlier call (including one the user just hung up and
+// reconnected, e.g. to pick up an updated voice prompt) leaves the NEW
+// call's session with zero grounding about it: nothing re-announces it on
+// reconnect, so "interpret this" on an already-on-screen visualization gets
+// a genuine "I don't have access to it" — the model isn't wrong, it really
+// never received that context in this session.
+export const UI_CONTEXT_REQUEST_EVENT = "deeptutor:ui-context-request";
+
+export function dispatchUiContextRequest(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(UI_CONTEXT_REQUEST_EVENT));
+}
+
 // Fired by VoiceCallContext's answer_inline_question / submit_inline_answers
 // tool handlers. Only the most-recently-mounted, still-unresolved
 // AskUserOptions card reacts — same "active instance" pattern as quiz. This

@@ -21,6 +21,7 @@ import {
   type VisualizeAction,
   type VisualizeActionPayload,
   dispatchUiContext,
+  UI_CONTEXT_REQUEST_EVENT,
 } from "@/context/app-shell-storage";
 import "./svg-theme.css";
 
@@ -536,40 +537,54 @@ export default function VisualizationViewer({
   // but they still need SOME grounding — omitting it entirely (as before)
   // left "interpret this video" with nothing to interpret.
   useEffect(() => {
-    if (instanceIdRef.current !== activeVisualizeInstanceId) return;
-    if (isManimResult(result)) {
-      const summary = result.manim.summary;
-      const summaryText = summary?.summary_text?.trim();
-      const generatedOutput = summary?.generated_output?.trim();
-      const keyPoints = summary?.key_points?.filter((p) => p.trim());
+    // Re-checked on every call, not just once at effect setup — this same
+    // function also runs in response to UI_CONTEXT_REQUEST_EVENT, which can
+    // fire long after this effect was set up (a later-mounted visualization
+    // may have taken over "active" status by then).
+    function announce() {
+      if (instanceIdRef.current !== activeVisualizeInstanceId) return;
+      if (isManimResult(result)) {
+        const summary = result.manim.summary;
+        const summaryText = summary?.summary_text?.trim();
+        const generatedOutput = summary?.generated_output?.trim();
+        const keyPoints = summary?.key_points?.filter((p) => p.trim());
+        dispatchUiContext(
+          `A Manim ${result.manim.output_mode === "image" ? "storyboard image" : "animation video"} ` +
+            `is currently open on screen.` +
+            `${summaryText ? ` Summary: ${summaryText}.` : ""}` +
+            `${generatedOutput && !summaryText ? ` What it shows: ${generatedOutput}.` : ""}` +
+            `${keyPoints?.length ? ` Key points: ${keyPoints.join("; ")}.` : ""}` +
+            ` The user cannot control this one by voice (no fullscreen/show-code ` +
+            `tools apply to it) — do NOT generate a new visualization ` +
+            `(switch_capability) for requests about this one; only do that if ` +
+            `the user clearly asks for a different/new visualization on ` +
+            `another topic.`,
+        );
+        return;
+      }
+      const description = result.analysis?.description?.trim();
+      const dataDescription = result.analysis?.data_description?.trim();
+      const rationale = result.analysis?.rationale?.trim();
+      const visualElements = (result.analysis?.visual_elements ?? []).filter((e) => e?.trim());
       dispatchUiContext(
-        `A Manim ${result.manim.output_mode === "image" ? "storyboard image" : "animation video"} ` +
-          `is currently open on screen.` +
-          `${summaryText ? ` Summary: ${summaryText}.` : ""}` +
-          `${generatedOutput && !summaryText ? ` What it shows: ${generatedOutput}.` : ""}` +
-          `${keyPoints?.length ? ` Key points: ${keyPoints.join("; ")}.` : ""}` +
-          ` The user cannot control this one by voice (no fullscreen/show-code ` +
-          `tools apply to it) — do NOT generate a new visualization ` +
-          `(switch_capability) for requests about this one; only do that if ` +
-          `the user clearly asks for a different/new visualization on ` +
-          `another topic.`,
+        `A visualization is currently open on screen (${result.render_type} ` +
+          `format)${description ? `: ${description}` : ""}.` +
+          `${dataDescription ? ` Data shown: ${dataDescription}.` : ""}` +
+          `${visualElements.length ? ` Elements included: ${visualElements.join(", ")}.` : ""}` +
+          `${rationale ? ` Why this form was chosen: ${rationale}.` : ""} The ` +
+          `user can interact with THIS visualization by voice using ` +
+          `visualize_fullscreen, visualize_show_code, visualize_copy_code — ` +
+          `do NOT generate a new visualization (switch_capability) for ` +
+          `requests about this one; only do that if the user clearly asks ` +
+          `for a different/new visualization on another topic. If asked to ` +
+          `interpret/explain this, speak a real interpretation grounded in ` +
+          `the data and elements above, not a generic description that ` +
+          `could apply to any visualization.`,
       );
-      return;
     }
-    const description = result.analysis?.description?.trim();
-    const dataDescription = result.analysis?.data_description?.trim();
-    const rationale = result.analysis?.rationale?.trim();
-    dispatchUiContext(
-      `A visualization is currently open on screen (${result.render_type} ` +
-        `format)${description ? `: ${description}` : ""}.` +
-        `${dataDescription ? ` Data shown: ${dataDescription}.` : ""}` +
-        `${rationale ? ` Why this form was chosen: ${rationale}.` : ""} The ` +
-        `user can interact with THIS visualization by voice using ` +
-        `visualize_fullscreen, visualize_show_code, visualize_copy_code — ` +
-        `do NOT generate a new visualization (switch_capability) for ` +
-        `requests about this one; only do that if the user clearly asks ` +
-        `for a different/new visualization on another topic.`,
-    );
+    announce();
+    window.addEventListener(UI_CONTEXT_REQUEST_EVENT, announce);
+    return () => window.removeEventListener(UI_CONTEXT_REQUEST_EVENT, announce);
   }, [result]);
 
   if (isManimResult(result)) {

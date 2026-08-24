@@ -16,6 +16,7 @@ import {
   type ResearchOutlineAction,
   type ResearchOutlineActionPayload,
   dispatchUiContext,
+  UI_CONTEXT_REQUEST_EVENT,
 } from "@/context/app-shell-storage";
 
 // Tracks the most-recently-mounted ResearchOutlineEditor instance so a
@@ -168,21 +169,29 @@ export default function ResearchOutlineEditor({
   // otherwise "add a section on X" has nothing to act on. Only while still
   // editable (not yet confirmed) since the voice tools only apply then.
   useEffect(() => {
-    if (instanceIdRef.current !== activeOutlineInstanceId) return;
-    if (locked) return;
-    const titles = items
-      .map((item, i) => `${i + 1}. ${item.title || "(untitled)"}`)
-      .join("; ");
-    dispatchUiContext(
-      `A research outline for "${topic}" is currently open for review on ` +
-        `screen, with ${items.length} section(s): ${titles}. The user can ` +
-        `shape THIS outline by voice using research_add_outline_item, ` +
-        `research_remove_outline_item, research_edit_outline_item (all by ` +
-        `1-based position), and research_confirm_outline to proceed — do ` +
-        `NOT start a new research request (switch_capability) for requests ` +
-        `about this outline; only do that if the user clearly asks for a ` +
-        `different/new research topic.`,
-    );
+    // Re-checked inside announce() on every call (not just once at effect
+    // setup) since it also runs in response to UI_CONTEXT_REQUEST_EVENT,
+    // which can fire long after this effect was set up.
+    function announce() {
+      if (instanceIdRef.current !== activeOutlineInstanceId) return;
+      if (locked) return;
+      const titles = items
+        .map((item, i) => `${i + 1}. ${item.title || "(untitled)"}`)
+        .join("; ");
+      dispatchUiContext(
+        `A research outline for "${topic}" is currently open for review on ` +
+          `screen, with ${items.length} section(s): ${titles}. The user can ` +
+          `shape THIS outline by voice using research_add_outline_item, ` +
+          `research_remove_outline_item, research_edit_outline_item (all by ` +
+          `1-based position), and research_confirm_outline to proceed — do ` +
+          `NOT start a new research request (switch_capability) for requests ` +
+          `about this outline; only do that if the user clearly asks for a ` +
+          `different/new research topic.`,
+      );
+    }
+    announce();
+    window.addEventListener(UI_CONTEXT_REQUEST_EVENT, announce);
+    return () => window.removeEventListener(UI_CONTEXT_REQUEST_EVENT, announce);
   }, [items, locked, topic]);
 
   const validItems = locked

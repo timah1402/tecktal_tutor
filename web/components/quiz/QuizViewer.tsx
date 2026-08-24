@@ -38,6 +38,7 @@ import {
   type QuizSessionAction,
   type QuizSessionActionPayload,
   dispatchUiContext,
+  UI_CONTEXT_REQUEST_EVENT,
 } from "@/context/app-shell-storage";
 import {
   isChoiceQuizQuestion,
@@ -1024,20 +1025,28 @@ export default function QuizViewer({
   // active instance announces itself, and re-announces on every question
   // change so the model always knows which question is actually visible.
   useEffect(() => {
-    if (instanceIdRef.current !== activeQuizInstanceId) return;
-    if (!q) return;
-    dispatchUiContext(
-      `A quiz is currently open on screen: question ${idx + 1} of ${total} ` +
-        `(${q.difficulty || "unspecified difficulty"}, ${q.question_type}): ` +
-        `"${q.question}". The user can interact with THIS quiz by voice ` +
-        `using quiz_answer, quiz_navigate, quiz_submit_answer, ` +
-        `quiz_reset_answer, quiz_request_judging, quiz_toggle_bookmark, ` +
-        `quiz_add_to_category, quiz_set_answer_view, quiz_toggle_review, ` +
-        `quiz_open_followup, save_quiz_to_notebook, download_quiz — do NOT ` +
-        `start a new quiz (switch_capability) or write a duplicate quiz in ` +
-        `chat for requests about this one; only call switch_capability(quiz) ` +
-        `if the user clearly asks for a different/new quiz on another topic.`,
-    );
+    // Re-checked inside announce() on every call (not just once at effect
+    // setup) since it also runs in response to UI_CONTEXT_REQUEST_EVENT,
+    // which can fire long after this effect was set up.
+    function announce() {
+      if (instanceIdRef.current !== activeQuizInstanceId) return;
+      if (!q) return;
+      dispatchUiContext(
+        `A quiz is currently open on screen: question ${idx + 1} of ${total} ` +
+          `(${q.difficulty || "unspecified difficulty"}, ${q.question_type}): ` +
+          `"${q.question}". The user can interact with THIS quiz by voice ` +
+          `using quiz_answer, quiz_navigate, quiz_submit_answer, ` +
+          `quiz_reset_answer, quiz_request_judging, quiz_toggle_bookmark, ` +
+          `quiz_add_to_category, quiz_set_answer_view, quiz_toggle_review, ` +
+          `quiz_open_followup, save_quiz_to_notebook, download_quiz — do NOT ` +
+          `start a new quiz (switch_capability) or write a duplicate quiz in ` +
+          `chat for requests about this one; only call switch_capability(quiz) ` +
+          `if the user clearly asks for a different/new quiz on another topic.`,
+      );
+    }
+    announce();
+    window.addEventListener(UI_CONTEXT_REQUEST_EVENT, announce);
+    return () => window.removeEventListener(UI_CONTEXT_REQUEST_EVENT, announce);
   }, [idx, q, total]);
 
   if (!q) return null;
