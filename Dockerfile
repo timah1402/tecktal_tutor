@@ -211,6 +211,7 @@ pidfile=/var/run/supervisord.pid
 [program:backend]
 command=/bin/bash /app/start-backend.sh
 directory=/app
+user=deeptutor
 autostart=true
 autorestart=true
 stdout_logfile=/dev/fd/1
@@ -222,6 +223,7 @@ environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1"
 [program:frontend]
 command=/bin/bash /app/start-frontend.sh
 directory=/app/web
+user=deeptutor
 autostart=true
 autorestart=true
 startsecs=5
@@ -357,10 +359,16 @@ echo "   - data/user/settings/main.yaml"
 echo "   - data/user/settings/agents.yaml"
 echo "============================================"
 
-# Start supervisord as the unprivileged deeptutor user (UID 1000). The
-# supervisord children (backend, frontend) inherit this UID; chown above
-# ensured they can write under /app/data.
-exec gosu deeptutor /usr/bin/supervisord -c /etc/supervisor/conf.d/deeptutor.conf
+# supervisord itself stays root: each [program:] block sets user=deeptutor
+# (chown above ensured that user can write under /app/data), so backend and
+# frontend still run unprivileged. supervisord can't run as UID 1000 here —
+# its stdout_logfile/stderr_logfile=/dev/fd/{1,2} settings re-open the
+# container's stdout/stderr pipe by path, and that pipe is created for root
+# before this script's privilege drop would happen; a non-root reopen fails
+# with EACCES (surfaces as "unknown error making dispatchers" for every
+# program). Root can reopen it fine, and supervisor's own `user=` directive
+# drops privileges per-child after the fd is already inherited.
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/deeptutor.conf
 EOF
 
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
@@ -427,6 +435,7 @@ pidfile=/var/run/supervisord.pid
 [program:backend]
 command=python -m uvicorn deeptutor.api.main:app --host 0.0.0.0 --port %(ENV_BACKEND_PORT)s --reload --no-access-log
 directory=/app
+user=deeptutor
 autostart=true
 autorestart=true
 stdout_logfile=/dev/fd/1
@@ -438,6 +447,7 @@ environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1"
 [program:frontend]
 command=/bin/bash -c "cd /app/web && node node_modules/next/dist/bin/next dev -H 0.0.0.0 -p ${FRONTEND_PORT:-3782}"
 directory=/app/web
+user=deeptutor
 autostart=true
 autorestart=true
 startsecs=5
