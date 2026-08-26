@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import {
@@ -35,7 +35,7 @@ import { MASTERY_PATH_REFRESH_EVENT } from "@/context/app-shell-storage";
  * tutor enforces. A path is keyed by its chat session, so "Continue" reopens
  * that session in mastery mode.
  */
-export default function MasteryPathPage() {
+function MasteryPathPageInner() {
   const { i18n } = useTranslation();
   const zh = i18n.language?.toLowerCase().startsWith("zh");
   const tr = useCallback((cn: string, en: string) => (zh ? cn : en), [zh]);
@@ -249,6 +249,15 @@ export default function MasteryPathPage() {
         )}
       </section>
     </div>
+  );
+}
+
+export default function MasteryPathPage() {
+  // useSearchParams requires a Suspense boundary in app-router client pages.
+  return (
+    <Suspense fallback={null}>
+      <MasteryPathPageInner />
+    </Suspense>
   );
 }
 
