@@ -28,12 +28,16 @@ export function proxy(req: NextRequest) {
   // Auth is disabled (default) — let everything else through
   if (!AUTH_ENABLED) return NextResponse.next();
 
-  // Always allow auth pages and Next.js internals
+  // Always allow auth pages, Next.js internals, and the Open Graph/Twitter
+  // card image — link-preview crawlers (Slack, Telegram, iMessage, etc.)
+  // never carry a login cookie, so gating this behind auth would just make
+  // every shared link show a broken preview.
   if (
     pathname.startsWith(LOGIN_PATH) ||
     pathname.startsWith("/register") ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon")
+    pathname.startsWith("/favicon") ||
+    pathname.startsWith("/opengraph-image")
   ) {
     return NextResponse.next();
   }
