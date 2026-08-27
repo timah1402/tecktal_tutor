@@ -24,7 +24,14 @@ const fontSerif = Lora({
   variable: "--font-serif",
 });
 
+// Absolute base for og:image/twitter:image URLs (Open Graph requires
+// absolute URLs). Optional and build-time only — see the Dockerfile's
+// NEXT_PUBLIC_SITE_URL arg. Unset means Next falls back to its own
+// http://localhost:3000 default, same as before this existed.
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+
 export const metadata: Metadata = {
+  ...(siteUrl ? { metadataBase: new URL(siteUrl) } : {}),
   title: "TECKTAL TUTOR",
   description: "Agent-native intelligent learning companion",
   icons: {

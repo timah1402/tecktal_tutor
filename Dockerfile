@@ -22,6 +22,15 @@
 # so there is no need to cross-compile this stage.
 FROM --platform=$BUILDPLATFORM node:22-slim AS frontend-builder
 
+# Optional: the public site URL, used only to build absolute og:image/
+# twitter:image URLs for social link previews (Next.js's `metadataBase`).
+# Everything else stays URL-agnostic at build time (see the .env.local note
+# below) — this is the one exception, because Open Graph tags must be
+# absolute URLs and there's no request to read a Host header from at
+# static-generation time. Leave unset and previews fall back to Next's own
+# localhost default, same as before this arg existed.
+ARG NEXT_PUBLIC_SITE_URL=
+
 WORKDIR /app/web
 
 # Copy package files first for better caching
@@ -44,7 +53,7 @@ COPY deeptutor/__version__.py /app/deeptutor/__version__.py
 # into the bundle: `apiUrl`/`wsUrl` in web/lib/api.ts are pass-throughs and
 # the actual backend host is read at request time by web/proxy.ts from
 # DEEPTUTOR_API_BASE_URL (exported by the entrypoint on every start).
-RUN printf 'NEXT_PUBLIC_APP_VERSION=\n' > .env.local
+RUN printf 'NEXT_PUBLIC_APP_VERSION=\nNEXT_PUBLIC_SITE_URL=%s\n' "$NEXT_PUBLIC_SITE_URL" > .env.local
 
 # Build Next.js for production with standalone output
 # This allows runtime environment variable injection
