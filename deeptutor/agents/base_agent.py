@@ -20,6 +20,7 @@ from deeptutor.logging import LLMStats
 from deeptutor.services.config import get_agent_params
 from deeptutor.services.llm import complete as llm_complete
 from deeptutor.services.llm import (
+    get_effective_temperature,
     get_llm_config,
     get_token_limit_kwargs,
     prepare_multimodal_messages,
@@ -387,7 +388,9 @@ class BaseAgent(ABC):
             LLM response text
         """
         model = model or self.get_model()
-        temperature = temperature if temperature is not None else self.get_temperature()
+        temperature = get_effective_temperature(
+            self.binding, model, temperature if temperature is not None else self.get_temperature()
+        )
         max_tokens = max_tokens if max_tokens is not None else self.get_max_tokens()
         max_retries = self.get_max_retries()
 
@@ -548,7 +551,9 @@ class BaseAgent(ABC):
             Response chunks as strings
         """
         model = model or self.get_model()
-        temperature = temperature if temperature is not None else self.get_temperature()
+        temperature = get_effective_temperature(
+            self.binding, model, temperature if temperature is not None else self.get_temperature()
+        )
         max_tokens = max_tokens if max_tokens is not None else self.get_max_tokens()
         max_retries = self.get_max_retries()
 

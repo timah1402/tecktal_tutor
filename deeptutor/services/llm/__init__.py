@@ -54,6 +54,7 @@ from .capabilities import (
     MODEL_OVERRIDES,
     PROVIDER_CAPABILITIES,
     get_capability,
+    get_effective_temperature,
     has_thinking_tags,
     requires_api_version,
     supports_response_format,
@@ -126,6 +127,7 @@ __all__ = [
     "supports_tools",
     "supports_vision",
     "requires_api_version",
+    "get_effective_temperature",
     # Multimodal
     "MultimodalResult",
     "prepare_multimodal_messages",

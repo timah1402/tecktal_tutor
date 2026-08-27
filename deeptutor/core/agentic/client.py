@@ -17,7 +17,11 @@ import httpx
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 
 from deeptutor.services.config import load_system_settings
-from deeptutor.services.llm import get_token_limit_kwargs, supports_tools
+from deeptutor.services.llm import (
+    get_effective_temperature,
+    get_token_limit_kwargs,
+    supports_tools,
+)
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
@@ -292,7 +296,9 @@ def build_completion_kwargs(
     reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """Compose temperature + per-model token-limit kwargs into one dict."""
-    kwargs: dict[str, Any] = {"temperature": temperature}
+    kwargs: dict[str, Any] = {
+        "temperature": get_effective_temperature(binding or "openai", model, temperature)
+    }
     if model:
         kwargs.update(get_token_limit_kwargs(model, max_tokens))
     kwargs.update(
