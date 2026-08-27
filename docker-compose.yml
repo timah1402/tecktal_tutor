@@ -56,6 +56,12 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
+      args:
+        # Optional — see the Dockerfile's NEXT_PUBLIC_SITE_URL comment.
+        # Set DEEPTUTOR_SITE_URL in .env (e.g. https://your-domain.example)
+        # to get correct absolute og:image/twitter:image URLs; leave unset
+        # for no change from before this arg existed.
+        NEXT_PUBLIC_SITE_URL: "${DEEPTUTOR_SITE_URL:-}"
     container_name: deeptutor
     restart: unless-stopped
     ports:
