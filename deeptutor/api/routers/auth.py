@@ -446,8 +446,21 @@ async def login(body: LoginRequest, response: Response) -> dict:
 
 @router.post("/logout")
 async def logout(response: Response) -> dict:
-    """Clear the JWT cookie."""
-    response.delete_cookie(key=_COOKIE_NAME, samesite=_SAMESITE)
+    """Clear the JWT cookie.
+
+    Must repeat every attribute set_cookie used (httponly, secure, samesite) —
+    a Set-Cookie that clears a cookie only reliably overrides the original in
+    the browser when its attributes match; a mismatched `secure` (e.g. the
+    login cookie set with secure=True while this defaulted to False) can
+    leave the original cookie in place, so logging out silently logs the
+    user right back in on the next request.
+    """
+    response.delete_cookie(
+        key=_COOKIE_NAME,
+        httponly=True,
+        samesite=_SAMESITE,
+        secure=_SECURE,
+    )
     return {"ok": True}
 
 
