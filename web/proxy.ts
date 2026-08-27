@@ -28,16 +28,24 @@ export function proxy(req: NextRequest) {
   // Auth is disabled (default) — let everything else through
   if (!AUTH_ENABLED) return NextResponse.next();
 
-  // Always allow auth pages, Next.js internals, and the Open Graph/Twitter
-  // card image — link-preview crawlers (Slack, Telegram, iMessage, etc.)
-  // never carry a login cookie, so gating this behind auth would just make
-  // every shared link show a broken preview.
+  // Always allow auth pages, Next.js internals, the Open Graph/Twitter card
+  // image, and static public assets (logos, icons, etc). Two distinct
+  // cookie-less callers need this: link-preview crawlers (Slack, Telegram,
+  // iMessage, ...) fetching /opengraph-image, and — just as real — Next's
+  // own image optimizer, which resolves a same-origin <Image> source via an
+  // internal server-side fetch that carries no cookies at all. Without this,
+  // /_next/image requests for any public/ asset (e.g. logo.png) get 307'd to
+  // /login regardless of whether the browser's own user is logged in, and
+  // the optimizer fails with "isn't a valid image ... received null".
+  const PUBLIC_ASSET_EXTENSIONS =
+    /\.(png|jpe?g|gif|svg|webp|avif|ico|woff2?|ttf|css)$/i;
   if (
     pathname.startsWith(LOGIN_PATH) ||
     pathname.startsWith("/register") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
-    pathname.startsWith("/opengraph-image")
+    pathname.startsWith("/opengraph-image") ||
+    PUBLIC_ASSET_EXTENSIONS.test(pathname)
   ) {
     return NextResponse.next();
   }
