@@ -2059,10 +2059,10 @@ export default function ChatPage() {
           </div>
           <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
             {!hasMessages ? (
-              <div className="flex flex-1 min-h-0 flex-col items-center justify-start gap-8 overflow-y-auto py-6 animate-fade-in">
+              <div className="flex flex-1 min-h-0 flex-col items-center justify-start gap-8 overflow-y-auto py-6 animate-fade-in compact:gap-4 compact:py-3">
                 <div className="flex items-center justify-center gap-4">
-                 
-                  <h1 className="font-serif text-[40px] font-medium leading-[1.1] tracking-[-0.015em] text-[var(--foreground)]">
+
+                  <h1 className="font-serif text-[40px] font-medium compact:text-[30px] leading-[1.1] tracking-[-0.015em] text-[var(--foreground)]">
                     {t(welcomeGreeting)}
                   </h1>
                 </div>

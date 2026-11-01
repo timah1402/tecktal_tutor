@@ -110,11 +110,12 @@ function WideTile({
   const content = (
     <>
       <div
-        className={`flex items-center justify-center rounded-full ${isLg ? "h-14 w-14" : "h-9 w-9"}`}
+        className={`flex items-center justify-center rounded-full ${isLg ? "h-14 w-14 compact:h-10 compact:w-10" : "h-9 w-9"}`}
         style={{ background: locked ? "var(--muted)" : accent.tint }}
       >
         <entry.icon
           size={isLg ? 26 : 17}
+          className={isLg ? "compact:h-5 compact:w-5" : undefined}
           strokeWidth={1.8}
           style={{ color: locked ? "var(--muted-foreground)" : accent.icon }}
         />
@@ -131,7 +132,9 @@ function WideTile({
   // 2-line label) renders at exactly this size, never sized off its own
   // content, so the grid stays visually uniform regardless of label length.
   const className = `flex shrink-0 flex-col items-center justify-center rounded-2xl border text-center transition-colors duration-150 ${
-    isLg ? "h-[130px] w-[130px] gap-2 px-3 py-4" : "h-[92px] w-[72px] gap-1.5 px-2 py-3"
+    isLg
+      ? "h-[130px] w-[130px] gap-2 px-3 py-4 compact:h-[96px] compact:w-[96px] compact:gap-1 compact:px-2 compact:py-2.5"
+      : "h-[92px] w-[72px] gap-1.5 px-2 py-3"
   } ${
     locked
       ? "cursor-not-allowed border-[var(--border)]/50 bg-[var(--card)]/60"
@@ -243,7 +246,7 @@ export function HeroQuickActions() {
   }));
 
   return (
-    <div className="flex flex-col items-center gap-6">
+    <div className="flex flex-col items-center gap-6 compact:gap-4">
       <motion.button
         type="button"
         layout
@@ -256,7 +259,7 @@ export function HeroQuickActions() {
         aria-label={t("Record voice")}
         whileHover={{ scale: 1.04 }}
         whileTap={{ scale: 0.97 }}
-        className={`flex h-36 w-36 shrink-0 items-center justify-center rounded-full border-[8px] transition-colors duration-150 ${
+        className={`flex h-36 w-36 shrink-0 items-center justify-center rounded-full border-[8px] transition-colors duration-150 compact:h-24 compact:w-24 compact:border-[6px] [&>svg]:compact:h-9 [&>svg]:compact:w-9 ${
           speaking
             ? "border-[var(--primary)]/60 bg-[var(--primary)]/10 animate-pulse"
             : callActive || connecting
@@ -342,9 +345,9 @@ export function HeroQuickActions() {
             narrower row under the wider one. Clicking any real tile behaves
             exactly as it does once expanded (same handlers/layoutIds); only
             "See more" is local UI state. */
-        <div className="flex flex-col items-center gap-4">
+        <div className="flex flex-col items-center gap-4 compact:gap-3">
           {[collapsedEntries.slice(0, 4), collapsedEntries.slice(4)].map((row, rowIndex) => (
-            <div key={rowIndex} className="flex gap-4">
+            <div key={rowIndex} className="flex flex-wrap justify-center gap-4 compact:gap-3">
               {row.map(({ entry, index }) => {
                 if (entry === SEE_MORE_ENTRY) {
                   return (
