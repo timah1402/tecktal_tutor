@@ -36,6 +36,7 @@ import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
 import { HeroQuickActions } from "@/components/chat/home/HeroQuickActions";
+import { ScaleToFit } from "@/components/chat/home/ScaleToFit";
 // Imported eagerly so the drawer shell is always mounted off-screen —
 // clicking a chip becomes a single CSS class flip, no chunk fetch + double
 // render. The heavy renderers inside still load lazily.
@@ -1991,7 +1992,9 @@ export default function ChatPage() {
           data-viewer-open={viewerPanelOpen ? "true" : "false"}
           className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
         >
-          <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">
+          {/* max-md:pl-16 clears the sidebar's floating mobile menu button
+              (fixed, top-left) so it doesn't sit on top of the title. */}
+          <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0 max-md:pl-16">
             <div className="group/title min-w-0 flex flex-1 items-center gap-2">
               {sessionTitleEditing ? (
                 <input
@@ -2059,14 +2062,18 @@ export default function ChatPage() {
           </div>
           <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
             {!hasMessages ? (
-              <div className="flex flex-1 min-h-0 flex-col items-center justify-start gap-8 overflow-y-auto py-6 animate-fade-in compact:gap-4 compact:py-3">
-                <div className="flex items-center justify-center gap-4">
+              <div className="flex flex-1 min-h-0 flex-col items-center justify-start overflow-y-auto py-6 animate-fade-in">
+                <ScaleToFit>
+                  <div className="flex flex-col items-center justify-start gap-8">
+                    <div className="flex items-center justify-center gap-4">
 
-                  <h1 className="font-serif text-[40px] font-medium compact:text-[30px] leading-[1.1] tracking-[-0.015em] text-[var(--foreground)]">
-                    {t(welcomeGreeting)}
-                  </h1>
-                </div>
-                <HeroQuickActions />
+                      <h1 className="max-w-[calc(100vw-3rem)] text-center font-serif text-[40px] font-medium leading-[1.1] tracking-[-0.015em] text-[var(--foreground)] max-sm:text-[28px]">
+                        {t(welcomeGreeting)}
+                      </h1>
+                    </div>
+                    <HeroQuickActions />
+                  </div>
+                </ScaleToFit>
               </div>
             ) : (
               <div

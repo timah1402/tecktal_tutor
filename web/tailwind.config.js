@@ -8,11 +8,6 @@ module.exports = {
   ],
   theme: {
     extend: {
-      screens: {
-        // Short or narrow viewports (small laptop windows, phones): the /home
-        // hero shrinks so its tiles don't slide under the composer.
-        compact: { raw: "(max-height: 880px), (max-width: 640px)" },
-      },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         serif: ["var(--font-serif)", "Georgia", "serif"],

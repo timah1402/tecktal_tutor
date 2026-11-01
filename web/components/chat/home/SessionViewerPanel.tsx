@@ -515,11 +515,14 @@ function SessionViewerPanelInner(
     [openFileTab],
   );
 
+  // Phones (below md): the panel is a full-screen sheet above the sidebar's
+  // floating menu button (z-40) — a 92vw panel there just left a useless
+  // sliver with the menu button sitting on top of the tab bar.
   return (
     <div
       role="dialog"
       aria-hidden={!visible}
-      className={`fixed right-0 top-0 z-[30] flex h-full max-w-[92vw] flex-col border-l border-[var(--border)] bg-[var(--card)] transition-transform ease-out ${
+      className={`fixed right-0 top-0 z-[30] flex h-full max-w-[92vw] flex-col border-l border-[var(--border)] bg-[var(--card)] transition-transform ease-out max-md:z-[45] max-md:!w-full max-md:max-w-full max-md:border-l-0 ${
         // shadow-2xl only while visible — when closed, translate-x-full moves
         // the box off-screen but its blurred shadow still bleeds ~38px back
         // onto the viewport's right edge. Dropping the shadow off-screen kills

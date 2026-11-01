@@ -110,18 +110,18 @@ function WideTile({
   const content = (
     <>
       <div
-        className={`flex items-center justify-center rounded-full ${isLg ? "h-14 w-14 compact:h-10 compact:w-10" : "h-9 w-9"}`}
+        className={`flex items-center justify-center rounded-full ${isLg ? "h-14 w-14 max-sm:h-10 max-sm:w-10" : "h-9 w-9"}`}
         style={{ background: locked ? "var(--muted)" : accent.tint }}
       >
         <entry.icon
           size={isLg ? 26 : 17}
-          className={isLg ? "compact:h-5 compact:w-5" : undefined}
+          className={isLg ? "max-sm:h-5 max-sm:w-5" : undefined}
           strokeWidth={1.8}
           style={{ color: locked ? "var(--muted-foreground)" : accent.icon }}
         />
       </div>
       <span
-        className={`flex w-full items-center justify-center overflow-hidden text-center leading-tight ${isLg ? "h-[28px] text-[13px]" : "h-[26px] text-[11px]"} ${locked ? "text-[var(--muted-foreground)]/60" : "text-[var(--foreground)]/85"}`}
+        className={`flex w-full items-center justify-center overflow-hidden text-center leading-tight ${isLg ? "h-[28px] text-[13px] max-sm:h-[26px] max-sm:text-[11px]" : "h-[26px] text-[11px]"} ${locked ? "text-[var(--muted-foreground)]/60" : "text-[var(--foreground)]/85"}`}
       >
         {label}
       </span>
@@ -131,9 +131,11 @@ function WideTile({
   // Explicit fixed dimensions — every tile (capability or nav, 1-word or
   // 2-line label) renders at exactly this size, never sized off its own
   // content, so the grid stays visually uniform regardless of label length.
+  // On phones (below `sm`) the big tiles drop to 80px so a row of 4 fits the
+  // screen at a readable size instead of being scaled down by ScaleToFit.
   const className = `flex shrink-0 flex-col items-center justify-center rounded-2xl border text-center transition-colors duration-150 ${
     isLg
-      ? "h-[130px] w-[130px] gap-2 px-3 py-4 compact:h-[96px] compact:w-[96px] compact:gap-1 compact:px-2 compact:py-2.5"
+      ? "h-[130px] w-[130px] gap-2 px-3 py-4 max-sm:h-[80px] max-sm:w-[80px] max-sm:gap-1 max-sm:px-1.5 max-sm:py-2"
       : "h-[92px] w-[72px] gap-1.5 px-2 py-3"
   } ${
     locked
@@ -246,7 +248,7 @@ export function HeroQuickActions() {
   }));
 
   return (
-    <div className="flex flex-col items-center gap-6 compact:gap-4">
+    <div className="flex flex-col items-center gap-6">
       <motion.button
         type="button"
         layout
@@ -259,7 +261,7 @@ export function HeroQuickActions() {
         aria-label={t("Record voice")}
         whileHover={{ scale: 1.04 }}
         whileTap={{ scale: 0.97 }}
-        className={`flex h-36 w-36 shrink-0 items-center justify-center rounded-full border-[8px] transition-colors duration-150 compact:h-24 compact:w-24 compact:border-[6px] [&>svg]:compact:h-9 [&>svg]:compact:w-9 ${
+        className={`flex h-36 w-36 shrink-0 items-center justify-center rounded-full border-[8px] transition-colors duration-150 max-sm:h-28 max-sm:w-28 max-sm:border-[6px] [&>svg]:max-sm:h-11 [&>svg]:max-sm:w-11 ${
           speaking
             ? "border-[var(--primary)]/60 bg-[var(--primary)]/10 animate-pulse"
             : callActive || connecting
@@ -345,9 +347,9 @@ export function HeroQuickActions() {
             narrower row under the wider one. Clicking any real tile behaves
             exactly as it does once expanded (same handlers/layoutIds); only
             "See more" is local UI state. */
-        <div className="flex flex-col items-center gap-4 compact:gap-3">
+        <div className="flex flex-col items-center gap-4 max-sm:gap-2">
           {[collapsedEntries.slice(0, 4), collapsedEntries.slice(4)].map((row, rowIndex) => (
-            <div key={rowIndex} className="flex flex-wrap justify-center gap-4 compact:gap-3">
+            <div key={rowIndex} className="flex gap-4 max-sm:gap-2">
               {row.map(({ entry, index }) => {
                 if (entry === SEE_MORE_ENTRY) {
                   return (
