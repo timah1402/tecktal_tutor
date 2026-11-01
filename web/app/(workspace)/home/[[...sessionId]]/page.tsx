@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import {
   type KeyboardEvent,
   useCallback,
@@ -37,6 +38,8 @@ import ChatComposer from "@/components/chat/home/ChatComposer";
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
 import { HeroQuickActions } from "@/components/chat/home/HeroQuickActions";
 import { ScaleToFit } from "@/components/chat/home/ScaleToFit";
+import { MobileHomeHero } from "@/components/chat/home/MobileHomeHero";
+import { isMobileViewport, useIsMobile } from "@/hooks/useIsMobile";
 // Imported eagerly so the drawer shell is always mounted off-screen —
 // clicking a chip becomes a single CSS class flip, no chunk fetch + double
 // render. The heavy renderers inside still load lazily.
@@ -441,6 +444,9 @@ export default function ChatPage() {
   const [viewerPanelOpen, setViewerPanelOpen] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // On phones the panel is a full-screen sheet — never restore it open
+    // just because it was left open on a desktop.
+    if (isMobileViewport()) return;
     if (window.localStorage.getItem("dt:chat:viewer-panel") === "1") {
       setViewerPanelOpen(true);
     }
@@ -682,7 +688,10 @@ export default function ChatPage() {
   useEffect(() => {
     const prev = lastCapabilityNeedsConfigRef.current;
     lastCapabilityNeedsConfigRef.current = capabilityNeedsConfig;
-    if (!prev && capabilityNeedsConfig) {
+    // Skipped on phones, where the panel covers the whole screen: there the
+    // send-gate (onRequestConfigConfirm) opens it only once the user
+    // actually tries to send.
+    if (!prev && capabilityNeedsConfig && !isMobileViewport()) {
       ensureActivityPanelOpen();
     }
   }, [capabilityNeedsConfig, ensureActivityPanelOpen]);
@@ -709,6 +718,7 @@ export default function ChatPage() {
   // Time-of-day greeting: seeded once on mount from the user's local clock so
   // the heading stays stable while they're on the page. State (not useMemo)
   // because the random pick would otherwise mismatch SSR ↔ client hydration.
+  const isMobile = useIsMobile();
   const [welcomeGreeting, setWelcomeGreeting] = useState<string>(
     "What would you like to learn?",
   );
@@ -2025,7 +2035,16 @@ export default function ChatPage() {
                     <PenLine className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover/title:opacity-100" />
                   ) : null}
                 </button>
-              ) : null}
+              ) : (
+                // Phones have no sidebar logo on screen, so the empty
+                // session shows the brand mark here instead.
+                <span className="flex items-center gap-2 md:hidden">
+                  <Image src="/logo.png" alt="" width={28} height={28} className="h-7 w-7" />
+                  <span className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
+                    {t("TECKTAL Tutor")}
+                  </span>
+                </span>
+              )}
               {sessionTitleSaving ? (
                 <span className="shrink-0 text-xs text-[var(--muted-foreground)]">
                   {t("Saving...")}
@@ -2062,7 +2081,13 @@ export default function ChatPage() {
           </div>
           <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
             {!hasMessages ? (
-              <div className="flex flex-1 min-h-0 flex-col items-center justify-start overflow-y-auto py-6 animate-fade-in">
+              isMobile ? (
+                <MobileHomeHero greeting={welcomeGreeting} />
+              ) : (
+              // max-md:hidden: useIsMobile is false for the server render and
+              // the hydration pass, so on phones this desktop hero would
+              // otherwise flash for a frame before MobileHomeHero replaces it.
+              <div className="flex flex-1 min-h-0 flex-col items-center justify-start overflow-y-auto py-6 animate-fade-in max-md:hidden">
                 <ScaleToFit>
                   <div className="flex flex-col items-center justify-start gap-8">
                     <div className="flex items-center justify-center gap-4">
@@ -2075,6 +2100,7 @@ export default function ChatPage() {
                   </div>
                 </ScaleToFit>
               </div>
+              )
             ) : (
               <div
                 ref={messagesContainerRef}

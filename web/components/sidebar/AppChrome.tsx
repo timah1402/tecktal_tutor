@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import AppSidebar from "@/components/sidebar/AppSidebar";
+import MobileBottomNav from "@/components/sidebar/MobileBottomNav";
 import CapabilityGate from "@/components/access/CapabilityGate";
 import FeatureGate from "@/components/access/FeatureGate";
 
@@ -24,11 +25,13 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden">
       <AppSidebar />
-      <main className="flex-1 overflow-hidden bg-[var(--background)]">
+      {/* max-md:pb-14 keeps page content clear of the fixed bottom nav. */}
+      <main className="flex-1 overflow-hidden bg-[var(--background)] max-md:pb-14">
         <FeatureGate>
           <CapabilityGate>{children}</CapabilityGate>
         </FeatureGate>
       </main>
+      <MobileBottomNav />
     </div>
   );
 }
