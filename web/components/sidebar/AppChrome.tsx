@@ -23,7 +23,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    // h-dvh, not h-screen: on mobile Safari 100vh includes the area behind
+    // the browser's own toolbar, which pushed the composer under it.
+    <div className="flex h-dvh overflow-hidden">
       <AppSidebar />
       {/* max-md:pb-14 keeps page content clear of the fixed bottom nav. */}
       <main className="flex-1 overflow-hidden bg-[var(--background)] max-md:pb-14">
