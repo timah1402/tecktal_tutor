@@ -498,7 +498,15 @@ export function QuickActionsPanel({
           keeps the strip roughly half as tall as a single column would
           be, at this larger icon size). */}
       {showStrip && (
-        <div className="flex flex-col items-center gap-3 overflow-y-auto">
+        // Any tap on a strip icon closes the mobile drawer. Most of them
+        // (tools on /home, Home, History, voice) don't change the route, so
+        // the route-change reset above wouldn't catch them. No-op on desktop.
+        <div
+          className="flex flex-col items-center gap-3 overflow-y-auto"
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest("a, button")) setMobileDrawerOpen(false);
+          }}
+        >
           <motion.button
             type="button"
             layout
