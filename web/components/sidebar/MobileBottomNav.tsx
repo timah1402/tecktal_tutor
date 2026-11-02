@@ -46,7 +46,7 @@ export default function MobileBottomNav() {
   return (
     <nav
       aria-label={t("Main navigation")}
-      className="fixed inset-x-0 bottom-0 z-30 flex h-14 border-t border-[var(--border)]/60 bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 flex h-14 border-t border-[var(--border)]/60 bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden [html[data-keyboard=open]_&]:hidden"
     >
       {HOME && (
         <Link href={HOME.href} onClick={handleHomeClick} className={itemClass(pathname.startsWith("/home"))}>
