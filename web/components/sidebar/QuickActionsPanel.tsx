@@ -31,6 +31,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import {
   BarChart3,
   BookOpen,
@@ -399,7 +400,10 @@ export function QuickActionsPanel({
   const activeValue = chat?.state.activeCapability || "";
   const isNeutralHomeHero =
     pathname.startsWith("/home") && (chat?.state.messages.length ?? 0) === 0 && activeValue === "";
-  const showStrip = !isNeutralHomeHero;
+  // On phones the hero is MobileHomeHero (no dock, no shared layoutIds), so
+  // the drawer is the only place these live — always show them there.
+  const isMobile = useIsMobile();
+  const showStrip = !isNeutralHomeHero || isMobile;
   const inactiveTools = DOCK_TOOLS.filter((entry) => entry.capabilityValue !== activeValue);
 
   const lockedTooltip = t("Locked — contact your administrator to get access.");
