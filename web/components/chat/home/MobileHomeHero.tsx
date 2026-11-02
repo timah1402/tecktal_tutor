@@ -52,8 +52,10 @@ export function MobileHomeHero({ greeting }: { greeting: string }) {
     <div className="flex w-full flex-1 min-h-0 flex-col items-center">
       {/* Scaled rather than scrolled: on shorter phones the orb + title
           shrink to fit above the pills instead of leaving a scrollable strip
-          (with a visible scrollbar) there. */}
-      <div className="flex w-full flex-1 min-h-0 flex-col overflow-y-auto py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          (with a visible scrollbar) there. While the keyboard is up there's
+          only a sliver left, so the orb is hidden (space kept, so the
+          composer stays put above the keyboard). */}
+      <div className="flex w-full flex-1 min-h-0 flex-col overflow-y-auto py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [html[data-keyboard=open]_&]:invisible">
         <ScaleToFit className="items-center">
           <div className="flex flex-col items-center gap-6">
             {/* Orb: ambient glow + a faint outer ring + a dashed inner ring,
