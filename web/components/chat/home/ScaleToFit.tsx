@@ -19,9 +19,11 @@ import { useLayoutEffect, useRef, useState } from "react";
 export function ScaleToFit({
   children,
   minScale = 0.5,
+  className = "",
 }: {
   children: React.ReactNode;
   minScale?: number;
+  className?: string;
 }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -56,7 +58,7 @@ export function ScaleToFit({
   }, [minScale]);
 
   return (
-    <div ref={outerRef} className="flex w-full min-h-0 flex-1 justify-center">
+    <div ref={outerRef} className={`flex w-full min-h-0 flex-1 justify-center ${className}`}>
       <div
         className="shrink-0"
         style={fit ? { width: fit.width * fit.scale, height: fit.height * fit.scale } : undefined}
