@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLingerExpand } from "@/hooks/use-linger-expand";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 /**
  * Knowledge-base scope selector (composer toolbar).
@@ -41,13 +43,20 @@ export default function KnowledgeSelector({
     if (!next) linger();
   };
   const rootRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
-  // Close on outside click.
+  // Close on outside click (the mobile sheet is portaled, so it's checked
+  // separately from the root).
   useEffect(() => {
     if (!open) return;
     const handler = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (rootRef.current && !rootRef.current.contains(target)) {
+      if (
+        rootRef.current &&
+        !rootRef.current.contains(target) &&
+        !sheetRef.current?.contains(target)
+      ) {
         setOpen(false);
       }
     };
@@ -65,6 +74,57 @@ export default function KnowledgeSelector({
         : `${count} ${t("knowledge bases")}`;
   const menuPlacementClass =
     placement === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5";
+
+  const list =
+    knowledgeBases.length === 0 ? (
+      <div className="px-3 py-4 text-center text-[12px] text-[var(--muted-foreground)]">
+        {t("No knowledge bases available")}
+      </div>
+    ) : (
+      <div className={`overflow-y-auto py-1 ${isMobile ? "min-h-0 flex-1" : "max-h-[280px]"}`}>
+        {knowledgeBases.map((kb) => {
+          const active = selected.includes(kb.name);
+          return (
+            <button
+              key={kb.name}
+              type="button"
+              onClick={() => onToggle(kb.name)}
+              className={`flex w-full items-center gap-2.5 px-3 text-left transition-colors active:bg-[var(--muted)]/70 ${
+                isMobile ? "py-3" : "py-1.5"
+              } ${
+                active
+                  ? "bg-[var(--primary)]/[0.06]"
+                  : "hover:bg-[var(--muted)]/45"
+              }`}
+            >
+              <Database
+                size={15}
+                strokeWidth={1.7}
+                className={`shrink-0 ${
+                  active
+                    ? "text-[var(--primary)]"
+                    : "text-[var(--muted-foreground)]"
+                }`}
+              />
+              <span
+                className={`min-w-0 flex-1 truncate font-medium text-[var(--foreground)] ${
+                  isMobile ? "text-[15px]" : "text-[12.5px]"
+                }`}
+              >
+                {kb.name}
+              </span>
+              {active && (
+                <Check
+                  size={14}
+                  strokeWidth={2}
+                  className="shrink-0 text-[var(--primary)]"
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
 
   return (
     <div ref={rootRef} className="relative">
@@ -102,55 +162,49 @@ export default function KnowledgeSelector({
         </span>
       </button>
 
-      {open && (
+      {open && !isMobile && (
         <div
           className={`dt-popup-up absolute right-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`}
         >
-          {knowledgeBases.length === 0 ? (
-            <div className="px-3 py-4 text-center text-[12px] text-[var(--muted-foreground)]">
-              {t("No knowledge bases available")}
-            </div>
-          ) : (
-            <div className="max-h-[280px] overflow-y-auto py-1">
-              {knowledgeBases.map((kb) => {
-                const active = selected.includes(kb.name);
-                return (
-                  <button
-                    key={kb.name}
-                    type="button"
-                    onClick={() => onToggle(kb.name)}
-                    className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
-                      active
-                        ? "bg-[var(--primary)]/[0.06]"
-                        : "hover:bg-[var(--muted)]/45"
-                    }`}
-                  >
-                    <Database
-                      size={15}
-                      strokeWidth={1.7}
-                      className={`shrink-0 ${
-                        active
-                          ? "text-[var(--primary)]"
-                          : "text-[var(--muted-foreground)]"
-                      }`}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
-                      {kb.name}
-                    </span>
-                    {active && (
-                      <Check
-                        size={14}
-                        strokeWidth={2}
-                        className="shrink-0 text-[var(--primary)]"
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {list}
         </div>
       )}
+
+      {/* Phones: the popup above the composer gets clipped by the page's
+          overflow (worse with the keyboard up), so the list is portaled to
+          <body> as a panel over the page, sized to the visible area. */}
+      {open &&
+        isMobile &&
+        createPortal(
+          <>
+            <div
+              aria-hidden
+              className="fixed inset-0 z-[60] bg-[var(--overlay)]"
+              onClick={() => setOpen(false)}
+            />
+            <div
+              ref={sheetRef}
+              role="dialog"
+              aria-label={t("Select knowledge bases")}
+              className="fixed inset-x-3 top-16 z-[61] flex max-h-[calc(var(--app-height,100dvh)-5rem)] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--popover)] shadow-xl"
+            >
+              <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)]/60 px-4 py-3">
+                <span className="text-[15px] font-semibold text-[var(--foreground)]">
+                  {t("Knowledge")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="text-[14px] font-medium text-[var(--primary)]"
+                >
+                  {t("Done")}
+                </button>
+              </div>
+              {list}
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }
